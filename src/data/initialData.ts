@@ -1,0 +1,981 @@
+import { Service, Project, BookingFormField, WebsiteContent, Booking } from '../types';
+
+export const INITIAL_SERVICES: Service[] = [
+  {
+    id: 'srv-1',
+    number: 1,
+    order: 1,
+    name: 'Terrace / Roof Waterproofing',
+    nameTelugu: 'టెర్రస్ / రూఫ్ వాటర్ప్రూఫింగ్',
+    slug: 'terrace-roof-waterproofing',
+    image: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Protects your roof from rainwater seepage, cracks, and water damage. Helps prevent leakage and dampness from entering the house.',
+    shortDescriptionTelugu: 'వర్షపు నీరు ఇంటి పైకప్పులోకి ఇంకకుండా రూఫ్కు వాటర్ప్రూఫింగ్ చేస్తాము. క్రాక్స్, నీటి లీకేజ్ మరియు తేమ వల్ల వచ్చే సమస్యలను తగ్గించడంలో సహాయపడుతుంది.',
+    bulletPoints: [
+      'Protects your roof from rainwater seepage, cracks, and water damage.',
+      'Helps prevent leakage and dampness from entering the house.'
+    ],
+    bulletPointsTelugu: [
+      'వర్షపు నీరు ఇంటి పైకప్పులోకి ఇంకకుండా రూఫ్కు వాటర్ప్రూఫింగ్ చేస్తాము.',
+      'క్రాక్స్, నీటి లీకేజ్ మరియు తేమ వల్ల వచ్చే సమస్యలను తగ్గించడంలో సహాయపడుతుంది.'
+    ],
+    problemExplanation: 'Terraces face intense sunlight, heavy rains, and temperature variations. This leads to hairline cracks, porous concrete, water ponding, and damp patches on ceilings below.',
+    problemExplanationTelugu: 'ఎండ, వర్షం మరియు వాతావరణ మార్పుల వల్ల టెర్రస్‌పై సూక్ష్మ పగుళ్లు ఏర్పడి, వర్షపు నీరు స్లాబ్‌లోకి ఇంకిపోయి సీలింగ్ మరియు గోడలపై తేమ, చారలు వస్తాయి.',
+    solutionExplanation: 'We execute high-pressure surface cleaning, crack groove routing with polymer sealant, primer coat application, multi-coat fiber-reinforced elastomeric waterproofing membrane, and optional UV-reflective top coats.',
+    solutionExplanationTelugu: 'ఉపరితలాన్ని శుభ్రం చేసి, క్రాక్స్‌ను పాలిమర్ సీలెంట్‌తో నింపి, ఫైబర్ మెష్‌తో కూడిన ఎలాస్టోమెరిక్ వాటర్‌ప్రూఫింగ్ పొరలను పూసి శాశ్వత రక్షణ కల్పిస్తాము.',
+    workProcess: [
+      'Comprehensive terrace inspection and moisture scanning',
+      'High-pressure water jet cleaning & debris removal',
+      'V-groove routing and polymer modified mortar crack sealing',
+      'Application of high-adhesion elastomeric primer',
+      'Cross-directional coats of high-grade waterproofing membrane with fiber mesh reinforcement',
+      'Ponding test for 48-72 hours to verify 100% leak-proof sealing'
+    ],
+    workProcessTelugu: [
+      'టెర్రస్ తనిఖీ మరియు తేమ స్కానింగ్',
+      'హై-ప్రెజర్ వాటర్ జెట్ క్లీనింగ్ & దుమ్ము తొలగింపు',
+      'క్రాక్స్ వి-గ్రూవ్ కటింగ్ మరియు పాలిమర్ మోర్టార్ సీలింగ్',
+      'ఎలాస్టోమెరిక్ ప్రైమర్ అప్లికేషన్',
+      'ఫైబర్ మెష్‌తో వాటర్‌ప్రూఫింగ్ కోటింగ్స్',
+      '48 గంటల వాటర్ పాండింగ్ టెస్ట్ ద్వారా ధృవీకరణ'
+    ],
+    features: ['UV Resistant Membrane', 'Fiber-Mesh Reinforced', 'Anti-Root Penetration', '100% Leak Proof'],
+    featuresTelugu: ['UV రెసిస్టెంట్ మెమ్బ్రేన్', 'ఫైబర్ మెష్ బలోపేతం', 'రూట్ పెనిట్రేషన్ నిరోధకం', '100% లీక్ ప్రూఫ్'],
+    buttonText: 'Book Terrace Inspection',
+    buttonTextTelugu: 'టెర్రస్ సర్వే బుక్ చేయండి'
+  },
+  {
+    id: 'srv-2',
+    number: 2,
+    order: 2,
+    name: 'Bathroom Waterproofing',
+    nameTelugu: 'బాత్రూమ్ వాటర్ప్రూఫింగ్',
+    slug: 'bathroom-waterproofing',
+    image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Prevents water from passing through bathroom floors and walls. Helps protect the structure from leakage, dampness, and damage.',
+    shortDescriptionTelugu: 'బాత్రూమ్ ఫ్లోర్ మరియు గోడల నుంచి నీరు కిందకు లేదా పక్కలకు లీక్ కాకుండా ట్రీట్మెంట్ చేస్తాము. లీకేజ్, తేమ మరియు నిర్మాణానికి కలిగే నష్టాన్ని నివారించడంలో సహాయపడుతుంది.',
+    bulletPoints: [
+      'Prevents water from passing through bathroom floors and walls.',
+      'Helps protect the structure from leakage, dampness, and damage.'
+    ],
+    bulletPointsTelugu: [
+      'బాత్రూమ్ ఫ్లోర్ మరియు గోడల నుంచి నీరు కిందకు లేదా పక్కలకు లీక్ కాకుండా ట్రీట్మెంట్ చేస్తాము.',
+      'లీకేజ్, తేమ మరియు నిర్మాణానికి కలిగే నష్టాన్ని నివారించడంలో సహాయపడుతుంది.'
+    ],
+    problemExplanation: 'Bathrooms suffer from continuous moisture, plumbing joint leaks, pipe penetrations, and capillary seepage that damages adjoining bedroom walls, peeling paint and creating efflorescence.',
+    problemExplanationTelugu: 'పైపుల జాయింట్లు, డ్రెయిన్ ట్రాప్‌ల వద్ద మరియు టైల్స్ మధ్య నీరు ఇంకిపోయి పక్క బెడ్‌రూమ్ గోడలకు చేరి పెయింట్ ఊడిపోవడం, బూజు పట్టడం జరుగుతుంది.',
+    solutionExplanation: 'We offer specialized sunken slab waterproofing with polymer crystalline barriers, mechanical pipe collar sealing, sanitary joint waterproofing, and epoxy tile grouting.',
+    solutionExplanationTelugu: 'సంకెన్ స్లాబ్ క్లీనింగ్, పైపు కాలర్ సీలింగ్, ఎలాస్టోమెరిక్ సిమెంటిషియస్ కోటింగ్ మరియు ఎపాక్సీ టైల్ గ్రౌటింగ్‌తో నూరు శాతం లీకేజ్ నివారిస్తాము.',
+    workProcess: [
+      'Removal of loose mortar and sunken slab cleaning',
+      'Sealing all pipe penetrations with expanding polyurethane / polymer collars',
+      'Fillet coving along 90-degree wall-to-floor junctions',
+      '2 coats of heavy-duty flexible cementitious waterproofing polymer',
+      'Protective screed plaster and waterproof tile installation with epoxy jointing'
+    ],
+    workProcessTelugu: [
+      'సంకెన్ స్లాబ్ దుమ్ము తొలగించి శుభ్రపరచడం',
+      'పైప్ చుట్టూ వాటర్‌టైట్ పాలిమర్ కాలర్స్ అమర్చడం',
+      'గోడ మరియు నేల జాయింట్లలో కోవింగ్ ఏర్పాటు',
+      'ఫ్లెక్సిబుల్ సిమెంటిషియస్ వాటర్‌ప్రూఫింగ్ కోటింగ్',
+      'వాటర్‌ప్రూఫ్ ఎపాక్సీ గ్రౌటింగ్‌తో టైల్స్ సీలింగ్'
+    ],
+    features: ['Pipe Collar Sealing', 'Crystalline Barrier', 'Mold & Dampness Prevention', 'Zero Floor Tile Damage Solutions'],
+    featuresTelugu: ['పైప్ కాలర్ సీలింగ్', 'క్రిస్టలిన్ బారియర్', 'తేమ & బూజు నివారణ', 'టైల్స్ పాడవకుండా పరిష్కారం'],
+    buttonText: 'Book Bathroom Inspection',
+    buttonTextTelugu: 'బాత్రూమ్ సర్వే బుక్ చేయండి'
+  },
+  {
+    id: 'srv-3',
+    number: 3,
+    order: 3,
+    name: 'Water Leakage Treatment',
+    nameTelugu: 'వాటర్ లీకేజ్ ట్రీట్మెంట్',
+    slug: 'water-leakage-treatment',
+    image: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Finds the source of water leakage and provides the right treatment. Helps stop recurring leakage and protect walls, ceilings, and floors.',
+    shortDescriptionTelugu: 'నీరు ఎక్కడి నుంచి లీక్ అవుతుందో గుర్తించి, సమస్యకు సరైన ట్రీట్మెంట్ అందిస్తాము. గోడలు, సీలింగ్ మరియు ఫ్లోర్లో వచ్చే నీటి లీకేజ్ సమస్యలను తగ్గించడంలో సహాయపడుతుంది.',
+    bulletPoints: [
+      'Finds the source of water leakage and provides the right treatment.',
+      'Helps stop recurring leakage and protect walls, ceilings, and floors.'
+    ],
+    bulletPointsTelugu: [
+      'నీరు ఎక్కడి నుంచి లీక్ అవుతుందో గుర్తించి, సమస్యకు సరైన ట్రీట్మెంట్ అందిస్తాము.',
+      'గోడలు, సీలింగ్ మరియు ఫ్లోర్లో వచ్చే నీటి లీకేజ్ సమస్యలను తగ్గించడంలో సహాయపడుతుంది.'
+    ],
+    problemExplanation: 'Active water leakages from internal plumbing pipes, RCC slab defects, concealed drainage lines, or structural joints cause rapid structural degradation and electrical hazards.',
+    problemExplanationTelugu: 'కన్సీల్డ్ ప్లంబింగ్ లైన్లు, డ్రైనేజీ లీకేజీలు లేదా స్లాబ్ లోపలి క్రాక్స్ నుండి నిరంతరం నీరు కారడం వల్ల స్లాబ్ బలహీనపడి కరెంట్ షార్ట్ సర్క్యూట్ ప్రమాదాలు ఏర్పడతాయి.',
+    solutionExplanation: 'We identify exact leak pathways using precision moisture assessment and inject rapid-setting hydrophobic compounds, cementitious polymers, or PU foam to immediately arrest water flow.',
+    solutionExplanationTelugu: 'థర్మల్ & మాయిశ్చర్ డిటెక్షన్ ద్వారా లీకేజ్ మూలాన్ని ఖచ్చితంగా గుర్తించి, వేగంగా గడ్డకట్టే హైడ్రోఫోబిక్ కెమికల్స్‌తో తక్షణమే లీకేజ్ ఆపుతాము.',
+    workProcess: [
+      'Visual and structural moisture path tracing',
+      'Pressure testing of concealed plumbing and drainage networks',
+      'Immediate chemical injection to plug active gushing or dripping water',
+      'Sub-surface moisture diversion and permanent seal coat application',
+      'Post-treatment drying and stability confirmation'
+    ],
+    workProcessTelugu: [
+      'తేమ మార్గాన్ని ట్రేసింగ్ చేసి గుర్తించడం',
+      'ప్లంబింగ్ మరియు డ్రైనేజ్ లైన్ల ప్రెజర్ టెస్టింగ్',
+      'కారుతున్న నీటిని ఆపడానికి కెమికల్ ఇంజెక్షన్',
+      'శాశ్వత సీల్ కోట్ అప్లికేషన్',
+      'పని పూర్తయిన తర్వాత డ్రైయింగ్ ధృవీకరణ'
+    ],
+    features: ['Rapid Setting Formula', 'Concealed Leak Tracing', 'Non-Destructive Diagnosis', 'Immediate Sealing'],
+    featuresTelugu: ['ఫాస్ట్ సెట్టింగ్ ఫార్ములా', 'కన్సీల్డ్ లీక్ ట్రేసింగ్', 'గోడలు పగలగొట్టకుండా నిర్ధారణ', 'తక్షణ సీలింగ్'],
+    buttonText: 'Book Leakage Inspection',
+    buttonTextTelugu: 'లీకేజ్ సర్వే బుక్ చేయండి'
+  },
+  {
+    id: 'srv-4',
+    number: 4,
+    order: 4,
+    name: 'Crack Filling & Waterproofing',
+    nameTelugu: 'క్రాక్ ఫిల్లింగ్ & వాటర్ప్రూఫింగ్',
+    slug: 'crack-filling-waterproofing',
+    image: 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Repairs cracks in walls, roofs, and concrete surfaces. Seals the cracks to help prevent water from entering the structure.',
+    shortDescriptionTelugu: 'గోడలు, రూఫ్ మరియు కాంక్రీట్ ప్రాంతాల్లో ఉన్న క్రాక్స్ను సరిచేస్తాము. క్రాక్స్ ద్వారా నీరు లోపలికి రాకుండా సీల్ చేసి వాటర్ప్రూఫింగ్ చేస్తాము.',
+    bulletPoints: [
+      'Repairs cracks in walls, roofs, and concrete surfaces.',
+      'Seals the cracks to help prevent water from entering the structure.'
+    ],
+    bulletPointsTelugu: [
+      'గోడలు, రూఫ్ మరియు కాంక్రీట్ ప్రాంతాల్లో ఉన్న క్రాక్స్ను సరిచేస్తాము.',
+      'క్రాక్స్ ద్వారా నీరు లోపలికి రాకుండా సీల్ చేసి వాటర్ప్రూఫింగ్ చేస్తాము.'
+    ],
+    problemExplanation: 'Structural and plaster cracks on exterior walls, beams, and columns allow rainwater penetration, corroding internal reinforcement steel bars and weakening the building frame.',
+    problemExplanationTelugu: 'గోడలు మరియు కాంక్రీట్ స్లాబ్‌లపై ఏర్పడే పగుళ్ల ద్వారా వర్షపు నీరు లోపలికి చేరి, పిల్లర్లు, బీముల్లోని ఐరన్ రాడ్లను తుప్పు పట్టిస్తుంది.',
+    solutionExplanation: 'We widen cracks into a clean V-groove, treat with rust inhibitors where rebar is exposed, and fill with high-performance non-shrink micro-concrete or flexible elastomeric crack sealers.',
+    solutionExplanationTelugu: 'క్రాక్స్‌ను వి-ఆకారంలో కట్ చేసి, అధిక బలం కలిగిన నాన్-ష్రింక్ మైక్రో కాంక్రీట్ లేదా ఎలాస్టోమెరిక్ పాలిమర్‌తో సీల్ చేస్తాము.',
+    workProcess: [
+      'Opening and widening cracks into clean V-sections',
+      'Clearing dust and applying acrylic bonding agents',
+      'Filling with fiber-reinforced flexible polymer crack filler',
+      'Reinforcing with crack bridging mesh where necessary',
+      'Smooth finishing matching existing plaster surface profile'
+    ],
+    workProcessTelugu: [
+      'పగుళ్లను వి-సెక్షన్‌గా కట్ చేసి శుభ్రం చేయడం',
+      'అక్రిలిక్ బాండింగ్ ఏజెంట్ పూత',
+      'ఫైబర్ రీఇన్‌ఫోర్స్డ్ పాలిమర్ ఫిల్లింగ్',
+      'క్రాక్ బ్రిడ్జింగ్ మెష్ అమరిక',
+      'స్మూత్ ఫినిషింగ్ మరియు ప్లాస్టరింగ్'
+    ],
+    features: ['High Elasticity', 'Non-Shrink Micro Mortar', 'Rebar Protection', 'Smooth Finish'],
+    featuresTelugu: ['హై ఎలాస్టిసిటీ', 'నాన్-ష్రింక్ మోర్టార్', 'స్టీల్ రాడ్ల రక్షణ', 'మంచి ఫినిషింగ్'],
+    buttonText: 'Book Crack Repair',
+    buttonTextTelugu: 'క్రాక్ రిపేర్ బుక్ చేయండి'
+  },
+  {
+    id: 'srv-5',
+    number: 5,
+    order: 5,
+    name: 'External Wall Waterproofing',
+    nameTelugu: 'ఎక్స్టర్నల్ వాల్ వాటర్ప్రూఫింగ్',
+    slug: 'external-wall-waterproofing',
+    image: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Protects exterior walls from rainwater, moisture, and water seepage. Helps prevent damp patches, peeling paint, and wall damage.',
+    shortDescriptionTelugu: 'బయటి గోడలను వర్షపు నీరు, తేమ మరియు వాటర్ సీపేజ్ నుంచి రక్షించడానికి ట్రీట్మెంట్ చేస్తాము. డ్యాంప్ ప్యాచెస్, పెయింట్ ఊడిపోవడం మరియు గోడ నష్టాన్ని తగ్గించడంలో సహాయపడుతుంది.',
+    bulletPoints: [
+      'Protects exterior walls from rainwater, moisture, and water seepage.',
+      'Helps prevent damp patches, peeling paint, and wall damage.'
+    ],
+    bulletPointsTelugu: [
+      'బయటి గోడలను వర్షపు నీరు, తేమ మరియు వాటర్ సీపేజ్ నుంచి రక్షించడానికి ట్రీట్మెంట్ చేస్తాము.',
+      'డ్యాంప్ ప్యాచెస్, పెయింట్ ఊడిపోవడం మరియు గోడ నష్టాన్ని తగ్గించడంలో సహాయపడుతుంది.'
+    ],
+    problemExplanation: 'Continuous wind-driven monsoon rains penetrate through external wall micro-cracks and porous plaster, leaving internal walls stained, moldy, and structurally compromised.',
+    problemExplanationTelugu: 'తుఫాను గాలి వానల వల్ల బయటి గోడలలోని చిన్న పగుళ్ల ద్వారా తేమ లోపలికి ఇంకిపోయి ఇంటీరియర్ గోడలు పాడవడం, పెయింట్ పెచ్చులూడటం జరుగుతుంది.',
+    solutionExplanation: 'We deploy high-elastic exterior waterproofing barriers with rain-barrier technology that bridge hairline cracks, resist algae and fungal growth, and withstand extreme weather.',
+    solutionExplanationTelugu: 'ఎక్స్‌టీరియర్ క్రాక్స్‌ను పూడ్చి, ఎలాస్టోమెరిక్ వాటర్‌ప్రూఫ్ ప్రైమర్ మరియు డ్యూరబుల్ వెదర్-ప్రూఫ్ కోటింగ్‌తో గోడలకు పూర్తి రక్షణ కల్పిస్తాము.',
+    workProcess: [
+      'Scaffolding setup and thorough surface wire brushing / pressure washing',
+      'Repair of all external plaster cavities and expansion joints',
+      'Application of deep-penetrating water-resistant primer',
+      'Two coats of anti-carbonation, flexible acrylic external waterproofing paint',
+      'Quality check across all window frames, chajjas, and facade joints'
+    ],
+    workProcessTelugu: [
+      'స్కాఫోల్డింగ్ ఏర్పాటు మరియు గోడల వాషింగ్',
+      'బయటి ప్లాస్టరింగ్ పగుళ్లు మరియు జాయింట్ల రిపేర్',
+      'డీప్ పెనిట్రేటింగ్ వాటర్‌ప్రూఫ్ ప్రైమర్ పూత',
+      'రెండు కోట్లు ఫ్లెక్సిబుల్ అక్రిలిక్ వాటర్‌ప్రూఫ్ పెయింట్',
+      'కిటికీలు, సజ్జల జాయింట్ల నాణ్యతా పరిశీలన'
+    ],
+    features: ['Crack Bridging Shield', 'Anti-Fungal & Anti-Algae', 'High Elasticity', 'Weatherproof Shield'],
+    featuresTelugu: ['క్రాక్ బ్రిడ్జింగ్ షీల్డ్', 'యాంటీ ఫంగల్ & ఆల్గే నిరోధకం', 'హై ఎలాస్టిసిటీ', 'వాతావరణ రక్షణ కవచం'],
+    buttonText: 'Book External Wall Service',
+    buttonTextTelugu: 'ఎక్స్‌టర్నల్ వాల్ సర్వే బుక్ చేయండి'
+  },
+  {
+    id: 'srv-6',
+    number: 6,
+    order: 6,
+    name: 'Balcony Waterproofing',
+    nameTelugu: 'బాల్కనీ వాటర్ప్రూఫింగ్',
+    slug: 'balcony-waterproofing',
+    image: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Protects balcony floors and joints from rainwater pooling and seepage. Prevents water damage to ceilings and walls beneath the balcony.',
+    shortDescriptionTelugu: 'బాల్కనీ ఫ్లోర్లు మరియు జాయింట్లలో వర్షపు నీరు నిలవడం, ఇంకిపోవడం జరగకుండా రక్షిస్తాము. బాల్కనీ కింద ఉన్న సీలింగ్ మరియు గోడలు పాడవకుండా నివారిస్తుంది.',
+    bulletPoints: [
+      'Protects balcony floors and joints from rainwater pooling and seepage.',
+      'Prevents water damage to ceilings and walls beneath the balcony.'
+    ],
+    bulletPointsTelugu: [
+      'బాల్కనీ ఫ్లోర్లు మరియు జాయింట్లలో వర్షపు నీరు నిలవడం, ఇంకిపోవడం జరగకుండా రక్షిస్తాము.',
+      'బాల్కనీ కింద ఉన్న సీలింగ్ మరియు గోడలు పాడవకుండా నివారిస్తుంది.'
+    ],
+    problemExplanation: 'Balconies are open to rain and sun. Insufficient slope, loose tile grout, and porous floor slabs lead to rainwater pooling and seepage directly damaging the room ceilings and facades below.',
+    problemExplanationTelugu: 'బాల్కనీలలో వర్షపు నీరు నిల్వ ఉండటం, టైల్ జాయింట్ల గుండా నీరు ఇంకడం వల్ల కింద ఫ్లోర్ సీలింగ్స్ మరియు గోడలు తడిసి పగుళ్లు వస్తాయి.',
+    solutionExplanation: 'We correct rainwater runoff slopes, waterproof tile perimeters with elastomeric polyurethanes, reinforce floor-to-wall joints with coving fillets, and install durable waterproof membrane layers.',
+    solutionExplanationTelugu: 'నీరు నిలవకుండా స్లోప్ లెవల్ చేసి, ఫ్లోర్ మరియు గోడల మూలలను సీల్ చేసి, ఎలాస్టోమెరిక్ వాటర్‌ప్రూఫింగ్ కోటింగ్‌తో బాల్కనీకి శాశ్వత రక్షణ అందిస్తాము.',
+    workProcess: [
+      'Slope gradient evaluation and surface cleaning',
+      'Tile joint raking and perimeter wall coving preparation',
+      'Application of high-performance elastomeric waterproof membrane',
+      'Fiberglass mesh embedding across all corner joints and drain perimeters',
+      'Ponding water test and UV-resistant protective top seal'
+    ],
+    workProcessTelugu: [
+      'బాల్కనీ స్లోప్ లెవల్ మరియు సర్ఫేస్ క్లీనింగ్',
+      'టైల్ జాయింట్లు మరియు మూలల శుభ్రత',
+      'ఎలాస్టోమెరిక్ వాటర్‌ప్రూఫ్ మెమ్బ్రేన్ పూత',
+      'డ్రెయిన్ పైపుల చుట్టూ ఫైబర్ మెష్ అమరిక',
+      'వాటర్ టెస్టింగ్ మరియు UV ప్రొటెక్టివ్ ఫినిష్'
+    ],
+    features: ['Slope Leveling', 'Perimeter Coving Seal', 'UV Weather Resistance', 'Zero Bottom Ceiling Leaks'],
+    featuresTelugu: ['స్లోప్ లెవలింగ్', 'మూలల పరిపూర్ణ సీలింగ్', 'UV వెదర్ రెసిస్టెన్స్', 'సీలింగ్ లీకేజ్ నివారణ'],
+    buttonText: 'Book Balcony Inspection',
+    buttonTextTelugu: 'బాల్కనీ సర్వే బుక్ చేయండి'
+  },
+  {
+    id: 'srv-7',
+    number: 7,
+    order: 7,
+    name: 'Sump & Overhead Water Tank Waterproofing',
+    nameTelugu: 'సంప్ & ఓవర్‌హెడ్ వాటర్ ట్యాంక్ వాటర్ప్రూఫింగ్',
+    slug: 'sump-overhead-water-tank-waterproofing',
+    image: 'https://images.unsplash.com/photo-1542013936693-884638332954?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Provides non-toxic, food-grade waterproofing for drinking water sumps and overhead tanks. Stops water leakage and prevents external contaminated water from seeping inside.',
+    shortDescriptionTelugu: 'తాగే నీటి సంప్‌లు మరియు ఓవర్‌హెడ్ ట్యాంకులకు ఫుడ్-గ్రేడ్, నాన్-టాక్సిక్ వాటర్ప్రూఫింగ్ అందిస్తాము. నీటి లీకేజ్ ఆపుతుంది మరియు బయటి మురుగునీరు లోపలికి ఇంకకుండా నివారిస్తుంది.',
+    bulletPoints: [
+      'Provides non-toxic, food-grade waterproofing for drinking water sumps and overhead tanks.',
+      'Stops water leakage and prevents external contaminated water from seeping inside.'
+    ],
+    bulletPointsTelugu: [
+      'తాగే నీటి సంప్‌లు మరియు ఓవర్‌హెడ్ ట్యాంకులకు ఫుడ్-గ్రేడ్, నాన్-టాక్సిక్ వాటర్ప్రూఫింగ్ అందిస్తాము.',
+      'నీటి లీకేజ్ ఆపుతుంది మరియు బయటి మురుగునీరు లోపలికి ఇంకకుండా నివారిస్తుంది.'
+    ],
+    problemExplanation: 'Underground sumps suffer from external soil water contamination and internal water loss through joint cracks. Overhead tanks develop seepage dampening top floor ceilings.',
+    problemExplanationTelugu: 'భూగర్భ సంప్‌ల నుండి నీరు లీకై వృథా కావడం లేదా బయటి డ్రైనేజీ మురుగునీరు లోపలికి కలవడం వల్ల ప్రమాదకరమైన నీటి కాలుష్యం ఏర్పడుతుంది.',
+    solutionExplanation: 'We provide specialized food-grade, non-toxic cementitious epoxy and crystalline waterproofing systems compliant with drinking water hygiene standards.',
+    solutionExplanationTelugu: 'తాగే నీటికి సురక్షితమైన నాన్-టాక్సిక్, ఫుడ్-గ్రేడ్ సర్టిఫైడ్ ఎపాక్సీ మరియు క్రిస్టలిన్ సిస్టమ్‌తో ట్యాంకులకు వాటర్‌ప్రూఫింగ్ చేస్తాము.',
+    workProcess: [
+      'Complete de-watering and high-pressure tank scrubbing',
+      'V-groove treatment of all cold joints, construction joints, and corners',
+      'Application of crystalline slurry that penetrates concrete pores',
+      'Two coats of certified non-toxic food-grade waterproof polymer coating',
+      'Curing and hygiene sterilization before refilling'
+    ],
+    workProcessTelugu: [
+      'ట్యాంక్ నీరు తొలగించి క్లీనింగ్ చేయడం',
+      'కన్స్ట్రక్షన్ జాయింట్లు మరియు మూలలను వి-గ్రూవ్ ట్రీట్మెంట్',
+      'క్రిస్టలిన్ స్లర్రీ అప్లికేషన్',
+      'ఫుడ్ గ్రేడ్ నాన్-టాక్సిక్ పాలిమర్ కోటింగ్స్',
+      'క్యూరింగ్ మరియు పరిశుభ్రతా ధృవీకరణ'
+    ],
+    features: ['100% Non-Toxic Food Grade', 'Underground & Overhead Tanks', 'Crystalline Technology', 'Zero Contamination'],
+    featuresTelugu: ['100% ఫుడ్ గ్రేడ్ నాన్-టాక్సిక్', 'అండర్‌గ్రౌండ్ & ఓవర్‌హెడ్ ట్యాంకులు', 'క్రిస్టలిన్ టెక్నాలజీ', 'కాలుష్య రహితం'],
+    buttonText: 'Book Tank Waterproofing',
+    buttonTextTelugu: 'వాటర్ ట్యాంక్ సర్వే బుక్ చేయండి'
+  },
+  {
+    id: 'srv-8',
+    number: 8,
+    order: 8,
+    name: 'Basement Waterproofing',
+    nameTelugu: 'బేస్‌మెంట్ వాటర్ప్రూఫింగ్',
+    slug: 'basement-waterproofing',
+    image: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Protects underground basements, retaining walls, and lift pits from heavy water pressure and dampness. Prevents structural weakening and basement flooding.',
+    shortDescriptionTelugu: 'అండర్‌గ్రౌండ్ బేస్‌మెంట్లు, రిటైనింగ్ గోడలు మరియు లిఫ్ట్ పిట్లను భూగర్భ నీటి ఒత్తిడి నుండి రక్షిస్తాము. నిర్మాణం బలహీనపడకుండా మరియు బేస్‌మెంట్ మునిగిపోకుండా కాపాడుతుంది.',
+    bulletPoints: [
+      'Protects underground basements, retaining walls, and lift pits from heavy water pressure and dampness.',
+      'Prevents structural weakening and basement flooding.'
+    ],
+    bulletPointsTelugu: [
+      'అండర్‌గ్రౌండ్ బేస్‌మెంట్లు, రిటైనింగ్ గోడలు మరియు లిఫ్ట్ పిట్లను భూగర్భ నీటి ఒత్తిడి నుండి రక్షిస్తాము.',
+      'నిర్మాణం బలహీనపడకుండా మరియు బేస్‌మెంట్ మునిగిపోకుండా కాపాడుతుంది.'
+    ],
+    problemExplanation: 'High groundwater tables and hydrostatic pressure push water through concrete joints, raft slabs, and retaining walls, flooding parking areas and lift pits.',
+    problemExplanationTelugu: 'భూగర్భ నీటి పీడనం వల్ల బేస్‌మెంట్ గోడలు, లిఫ్ట్ పిట్స్ మరియు ఫ్లోర్ స్లాబ్‌ల నుండి నీరు ఊటలా బయటకు వచ్చి బేస్‌మెంట్ పార్కింగ్ మునిగిపోతుంది.',
+    solutionExplanation: 'We provide heavy-duty negative-side crystalline waterproofing, multi-stage pressure grouting, polyurethane waterstop injection, and elastomeric protective tanking.',
+    solutionExplanationTelugu: 'నెగటివ్ సైడ్ క్రిస్టలిన్ వాటర్‌ప్రూఫింగ్, హై-ప్రెజర్ పాలియురేథేన్ ఇంజెక్షన్ మరియు ఎలాస్టోమెరిక్ ట్యాంకింగ్ సిస్టమ్ ద్వారా నీటిని శాశ్వతంగా అడ్డుకుంటాము.',
+    workProcess: [
+      'Site hydro-pressure diagnosis and seepage mapping',
+      'Plugging active water jets with hydraulic fast-setting cement',
+      'Drilling injection packers and pumping expanding PU chemical resin',
+      'Multi-coat deep-penetrating crystalline slurry application',
+      'Heavy-duty waterproof protective render plaster'
+    ],
+    workProcessTelugu: [
+      'హైడ్రో-ప్రెజర్ టెస్టింగ్ మరియు లీకేజ్ మ్యాపింగ్',
+      'వేగంగా గడ్డకట్టే హైడ్రాలిక్ సిమెంట్‌తో యాక్టివ్ లీక్స్ ఆపడం',
+      'ఇంజెక్షన్ ప్యాకర్స్ బిగించి PU రెసిన్ పంపింగ్',
+      'క్రిస్టలిన్ స్లర్రీ మల్టీ-కోట్ అప్లికేషన్',
+      'వాటర్‌ప్రూఫ్ ప్రొటెక్టివ్ ప్లాస్టరింగ్'
+    ],
+    features: ['Negative Side Waterproofing', 'High Hydrostatic Resistance', 'Lift Pit Sealing', 'Zero Excavation Needed'],
+    featuresTelugu: ['నెగటివ్ సైడ్ వాటర్‌ప్రూఫింగ్', 'అధిక నీటి ఒత్తిడిని తట్టుకునే శక్తి', 'లిఫ్ట్ పిట్ సీలింగ్', 'తవ్వకాలు లేకుండా పరిష్కారం'],
+    buttonText: 'Book Basement Inspection',
+    buttonTextTelugu: 'బేస్‌మెంట్ సర్వే బుక్ చేయండి'
+  },
+  {
+    id: 'srv-9',
+    number: 9,
+    order: 9,
+    name: 'Epoxy Grouting & Tile Joint Filling',
+    nameTelugu: 'ఎపాక్సీ గ్రౌటింగ్ & టైల్ జాయింట్ ఫిల్లింగ్',
+    slug: 'epoxy-grouting-tile-joint-filling',
+    image: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Fills and seals tile joints with 100% waterproof, chemical-resistant epoxy grout. Prevents water penetration, mold buildup, and loose tile issues in bathrooms and kitchens.',
+    shortDescriptionTelugu: 'టైల్స్ మధ్య జాయింట్లను 100% వాటర్‌ప్రూఫ్, కెమికల్ రెసిస్టెంట్ ఎపాక్సీ గ్రౌటింగ్‌తో సీల్ చేస్తాము. బాత్రూమ్‌లు మరియు కిచెన్‌లలో నీరు ఇంకడం, బూజు పట్టడం మరియు టైల్స్ వదులవడం నివారిస్తుంది.',
+    bulletPoints: [
+      'Fills and seals tile joints with 100% waterproof, chemical-resistant epoxy grout.',
+      'Prevents water penetration, mold buildup, and loose tile issues in bathrooms and kitchens.'
+    ],
+    bulletPointsTelugu: [
+      'టైల్స్ మధ్య జాయింట్లను 100% వాటర్‌ప్రూఫ్, కెమికల్ రెసిస్టెంట్ ఎపాక్సీ గ్రౌటింగ్‌తో సీల్ చేస్తాము.',
+      'బాత్రూమ్‌లు మరియు కిచెన్‌లలో నీరు ఇంకడం, బూజు పట్టడం మరియు టైల్స్ వదులవడం నివారిస్తుంది.'
+    ],
+    problemExplanation: 'Standard cement grouts erode easily, absorb dirty water, harbor dark bacteria, and allow water to seep beneath floor tiles, loosening them.',
+    problemExplanationTelugu: 'సాధారణ సిమెంట్ గ్రౌట్ కాలక్రమేణా కరిగిపోయి, మురికినీరు మరియు బ్యాక్టీరియా చేరడం వల్ల టైల్స్ కిందకి నీరు ఇంకి టైల్స్ లూజ్ అవుతాయి.',
+    solutionExplanation: 'We rake out damaged cement grout and replace it with chemical-resistant, 100% waterproof epoxy resin grout that never absorbs water, stains, or discolors.',
+    solutionExplanationTelugu: 'పాత గ్రౌట్‌ను తొలగించి, కెమికల్ రెసిస్టెంట్ 100% వాటర్‌ప్రూఫ్ ఎపాక్సీ రెసిన్ గ్రౌట్‌తో టైల్ జాయింట్లను పూర్తిగా సీల్ చేస్తాము.',
+    workProcess: [
+      'Mechanical raking and thorough cleaning of all tile joints',
+      'Vacuum dust extraction for dry, immaculate joints',
+      'Precision mixing of 3-component resin epoxy grout',
+      'Diagonal float application ensuring 100% joint compaction',
+      'Emulsification scrubbing and pristine tile face cleanup'
+    ],
+    workProcessTelugu: [
+      'టైల్ జాయింట్లను క్లీన్ చేసి పాత గ్రౌట్ తొలగించడం',
+      'వాక్యూమ్ ద్వారా డస్ట్ క్లీనింగ్',
+      '3-కాంపోనెంట్ ఎపాక్సీ రెసిన్ మిక్సింగ్',
+      'డయాగ్నల్ ఫ్లోట్‌తో జాయింట్లలో పూర్తిగా నింపడం',
+      'టైల్స్ పైభాగాన్ని శుభ్రంగా కడగడం'
+    ],
+    features: ['100% Waterproof', 'Stain & Chemical Resistant', 'Anti-Bacterial', 'Durable Color Fastness'],
+    featuresTelugu: ['100% వాటర్‌ప్రూఫ్', 'మచ్చలు & కెమికల్ నిరోధకం', 'యాంటీ బ్యాక్టీరియల్', 'శాశ్వత రంగు'],
+    buttonText: 'Book Epoxy Grouting',
+    buttonTextTelugu: 'ఎపాక్సీ గ్రౌటింగ్ బుక్ చేయండి'
+  },
+  {
+    id: 'srv-10',
+    number: 10,
+    order: 10,
+    name: 'PU (Polyurethane) Injection Grouting',
+    nameTelugu: 'PU (పాలియురేథేన్) ఇంజెక్షన్ గ్రౌటింగ్',
+    slug: 'pu-injection-grouting',
+    image: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'High-pressure injection to instantly stop active, running water leaks inside concrete cracks and expansion joints. Seals deep concrete voids without breaking or demolition.',
+    shortDescriptionTelugu: 'కాంక్రీట్ పగుళ్లు మరియు జాయింట్లలో ప్రవహించే యాక్టివ్ వాటర్ లీకులను తక్షణమే ఆపడానికి హై-ప్రెజర్ ఇంజెక్షన్ చేస్తాము. గోడలు పగలగొట్టకుండా కాంక్రీట్ లోపలి లోతైన ఖాళీలను శాశ్వతంగా సీల్ చేస్తుంది.',
+    bulletPoints: [
+      'High-pressure injection to instantly stop active, running water leaks inside concrete cracks and expansion joints.',
+      'Seals deep concrete voids without breaking or demolition.'
+    ],
+    bulletPointsTelugu: [
+      'కాంక్రీట్ పగుళ్లు మరియు జాయింట్లలో ప్రవహించే యాక్టివ్ వాటర్ లీకులను తక్షణమే ఆపడానికి హై-ప్రెజర్ ఇంజెక్షన్ చేస్తాము.',
+      'గోడలు పగలగొట్టకుండా కాంక్రీట్ లోపలి లోతైన ఖాళీలను శాశ్వతంగా సీల్ చేస్తుంది.'
+    ],
+    problemExplanation: 'Deep RCC voids, honeycombed concrete in basements, retaining walls, and lift pits allow high-pressure groundwater to penetrate through the core structure.',
+    problemExplanationTelugu: 'బేస్‌మెంట్లు, లిఫ్ట్ పిట్లు, రిటైనింగ్ వాల్స్‌లో కాంక్రీట్ లోపల గుల్లలు ఏర్పడి భూగర్భ జలాలు అధిక పీడనంతో కారుతూ ఉంటాయి.',
+    solutionExplanation: 'Specialized mechanical packers are drilled diagonally into the crack path. High-pressure PU resin is pumped inside, which expands up to 20x upon contact with water, creating a permanent elastic seal.',
+    solutionExplanationTelugu: 'మెకానికల్ ప్యాకర్స్ అమర్చి, హై-ప్రెజర్ పంపు ద్వారా పాలియురేథేన్ (PU) రెసిన్‌ను కాంక్రీట్ లోపలికి ఇంజెక్ట్ చేస్తాము. ఇది 20 రెట్లు వ్యాకోచించి నీటిని శాశ్వతంగా ఆపుతుంది.',
+    workProcess: [
+      'Drilling packer holes at 45-degree angles to intersect crack plane',
+      'Fixing high-pressure mechanical brass/steel packers',
+      'Injecting hydrophobic/hydrophilic polyurethane chemical resin using electric injection pump',
+      'Expanding foam displaces water and completely fills internal voids',
+      'Packer removal and surface patch finish'
+    ],
+    workProcessTelugu: [
+      '45 డిగ్రీల కోణంలో ప్యాకర్ హోల్స్ డ్రిల్లింగ్',
+      'హై-ప్రెజర్ బ్రాస్/స్టీల్ ప్యాకర్స్ బిగించడం',
+      'ఎలక్ట్రిక్ పంప్ ద్వారా PU రెసిన్ ఇంజెక్షన్',
+      'విస్తరించిన ఫోమ్ ద్వారా అంతర్గత గ్యాప్స్ పూర్తి సీలింగ్',
+      'ప్యాకర్స్ తొలగింపు & సర్ఫేస్ ఫినిషింగ్'
+    ],
+    features: ['20x Expansion Foam', 'High-Pressure 3000+ PSI Injection', 'Basements & Lift Pits', 'Zero Demolition'],
+    featuresTelugu: ['20 రెట్ల విస్తరణ ఫోమ్', 'హై ప్రెజర్ 3000+ PSI ఇంజెక్షన్', 'బేస్‌మెంట్లు & లిఫ్ట్ పిట్స్', 'కూల్చకుండా పరిష్కారం'],
+    buttonText: 'Book PU Injection',
+    buttonTextTelugu: 'PU ఇంజెక్షన్ బుక్ చేయండి'
+  },
+  {
+    id: 'srv-11',
+    number: 11,
+    order: 11,
+    name: 'Damp Proofing Treatment',
+    nameTelugu: 'డ్యాంప్ ప్రూఫింగ్ ట్రీట్మెంట్',
+    slug: 'damp-proofing-treatment',
+    image: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Treats rising dampness, efflorescence (white salt patches), and peeling wall paint on internal walls. Restores wall health and prevents recurring dampness.',
+    shortDescriptionTelugu: 'లోపలి గోడలపై వచ్చే తేమ, తెల్లటి ఉప్పు పొరలు (ఎఫ్లోరోసెన్స్) మరియు పెయింట్ ఊడిపోవడాన్ని నయం చేస్తాము. గోడల ఆరోగ్యాన్ని పునరుద్ధరించి, మళ్లీ తేమ రాకుండా అడ్డుకుంటుంది.',
+    bulletPoints: [
+      'Treats rising dampness, efflorescence (white salt patches), and peeling wall paint on internal walls.',
+      'Restores wall health and prevents recurring dampness.'
+    ],
+    bulletPointsTelugu: [
+      'లోపలి గోడలపై వచ్చే తేమ, తెల్లటి ఉప్పు పొరలు (ఎఫ్లోరోసెన్స్) మరియు పెయింట్ ఊడిపోవడాన్ని నయం చేస్తాము.',
+      'గోడల ఆరోగ్యాన్ని పునరుద్ధరించి, మళ్లీ తేమ రాకుండా అడ్డుకుంటుంది.'
+    ],
+    problemExplanation: 'Capillary action draws ground moisture up into internal masonry walls, causing efflorescence (shora/white salts), bubbling plaster, unpleasant odors, and peeling expensive paintwork.',
+    problemExplanationTelugu: 'భూమిలోని తేమ గోడల గుండా పైకి చేరి గోడలపై తెల్లటి ఉప్పు పొరలు, తేమ వాసన మరియు పెయింట్ ఊడిపోయి గదులు అందవిహీనంగా మారతాయి.',
+    solutionExplanation: 'We inject deep chemical damp-proof crystalline barriers into the brickwork base and apply breathable, anti-efflorescence polymer coatings to stop moisture rise permanently.',
+    solutionExplanationTelugu: 'గోడల అడుగుభాగంలో కెమికల్ డ్యాంప్-కోర్స్ బారియర్ ఇంజెక్షన్ చేసి, యాంటీ-సాల్ట్ పాలిమర్ కోటింగ్‌తో గోడలను శాశ్వతంగా తేమ రహితంగా మారుస్తాము.',
+    workProcess: [
+      'Scraping damaged plaster down to raw masonry surface',
+      'Drilling angled injection ports along the skirting/damp line',
+      'Pressure infusion of silicone/silane hydrophobic crystalline barrier',
+      'Application of anti-efflorescence neutralizing chemical coat',
+      'Re-plastering with polymer-modified waterproof mortar and smooth wall putty'
+    ],
+    workProcessTelugu: [
+      'దెబ్బతిన్న ప్లాస్టరింగ్‌ను గోడ నుంచి తొలగించడం',
+      'తేమ ఉన్న లైన్ వెంట డ్రిల్లింగ్ పోర్ట్స్ ఏర్పాటు',
+      'సిలికోన్ హైడ్రోఫోబిక్ కెమికల్ ఇంజెక్షన్',
+      'యాంటీ-సాల్ట్ కెమికల్ కోట్ అప్లికేషన్',
+      'వాటర్‌ప్రూఫ్ ప్లాస్టరింగ్ మరియు స్మూత్ పుట్టీ ఫినిషింగ్'
+    ],
+    features: ['Rising Damp Arrest', 'Salt Efflorescence Shield', 'Deep Pore Penetration', 'Long-Term Wall Protection'],
+    featuresTelugu: ['తేమ వ్యాప్తి నివారణ', 'ఉప్పు పొరల శాశ్వత నివారణ', 'డీప్ పోర్ పెనిట్రేషన్', 'గోడల దీర్ఘకాలిక రక్షణ'],
+    buttonText: 'Book Damp Proofing',
+    buttonTextTelugu: 'డ్యాంప్ ప్రూఫింగ్ బుక్ చేయండి'
+  },
+  {
+    id: 'srv-12',
+    number: 12,
+    order: 12,
+    name: 'Complete Civil & Waterproofing Renovation',
+    nameTelugu: 'కంప్లీట్ సివిల్ & వాటర్ప్రూఫింగ్ రినోవేషన్',
+    slug: 'complete-civil-waterproofing-renovation',
+    image: 'https://images.unsplash.com/photo-1541888946425-d0fbb186c5f7?auto=format&fit=crop&w=1200&q=80',
+    shortDescription: 'Comprehensive structural repair, plastering, rebar rust treatment, and turnkey waterproofing restoration for old and damaged buildings.',
+    shortDescriptionTelugu: 'పాత మరియు దెబ్బతిన్న భవనాలకు సమగ్ర స్ట్రక్చరల్ రిపేర్లు, ప్లాస్టరింగ్, రీబార్ రస్ట్ ట్రీట్మెంట్ మరియు వాటర్ప్రూఫింగ్ అందిస్తాము. భవనానికి సరికొత్త రూపునిచ్చి, దీర్ఘకాలిక భద్రతను చేకూరుస్తుంది.',
+    bulletPoints: [
+      'Comprehensive structural repair, plastering, rebar rust treatment, and turnkey waterproofing restoration for old and damaged buildings.',
+      'Restores structural strength, aesthetic appearance, and ensures long-term building durability.'
+    ],
+    bulletPointsTelugu: [
+      'పాత మరియు దెబ్బతిన్న భవనాలకు సమగ్ర స్ట్రక్చరల్ రిపేర్లు, ప్లాస్టరింగ్, రీబార్ రస్ట్ ట్రీట్మెంట్ మరియు వాటర్ప్రూఫింగ్ అందిస్తాము.',
+      'భవనానికి సరికొత్త రూపునిచ్చి, దీర్ఘకాలిక భద్రతను చేకూరుస్తుంది.'
+    ],
+    problemExplanation: 'Prolonged water seepage causes carbonation, rusting and spalling of concrete columns, beams, and slabs, critically compromising building stability.',
+    problemExplanationTelugu: 'చాలా కాలం నీటి లీకేజీ వల్ల కాంక్రీట్ లోపలి పిల్లర్లు, బీముల ఐరన్ రాడ్లు తుప్పుపట్టి కాంక్రీట్ ముక్కలు రాలిపోయి బిల్డింగ్ పటిష్టత ప్రమాదంలో పడుతుంది.',
+    solutionExplanation: 'We perform complete structural rehabilitation: removing spalled concrete, mechanical rust removal, zinc-rich rebar coating, bonding agents, micro-concrete gravity pouring, and structural strengthening.',
+    solutionExplanationTelugu: 'రాలిపోయిన కాంక్రీట్ తొలగించి, తుప్పు నివారణ జింక్ ప్రైమర్ పూసి, ఎపాక్సీ బాండింగ్ మరియు మైక్రో-కాంక్రీట్ జాకెటింగ్‌తో బిల్డింగ్ బలాన్ని పునరుద్ధరిస్తాము.',
+    workProcess: [
+      'Structural audit and hammer test to identify hollow/delaminated concrete',
+      'Careful chipping to expose corroded reinforcement steel',
+      'Sandblasting / wire brush rust removal and anti-corrosion zinc primer',
+      'Application of structural epoxy bonding agent',
+      'Formwork shuttering and pouring high-strength self-compacting micro-concrete'
+    ],
+    workProcessTelugu: [
+      'స్ట్రక్చరల్ ఆడిట్ మరియు సౌండ్ టెస్టింగ్',
+      'దెబ్బతిన్న భాగాన్ని తొలగించి స్టీల్ రాడ్లను బయటకు తీయడం',
+      'రస్ట్ తొలగింపు & యాంటీ-రస్ట్ జింక్ ప్రైమర్ పూత',
+      'స్ట్రక్చరల్ ఎపాక్సీ బాండింగ్ ఏజెంట్ అప్లికేషన్',
+      'మైక్రో కాంక్రీట్ పోరింగ్ & జాకెటింగ్'
+    ],
+    features: ['RCC Strengthening', 'Rebar Rust Passivation', 'Micro-Concrete Jacketing', 'Civil Engineering Precision'],
+    featuresTelugu: ['RCC కాలమ్ బలోపేతం', 'స్టీల్ రస్ట్ నివారణ', 'మైక్రో కాంక్రీట్ జాకెటింగ్', 'సివిల్ ఇంజనీరింగ్ ప్రమాణాలు'],
+    buttonText: 'Book Turnkey Renovation',
+    buttonTextTelugu: 'రినోవేషన్ సర్వే బుక్ చేయండి'
+  }
+];
+
+export const INITIAL_PROJECTS: Project[] = [
+  {
+    id: 'proj-1',
+    name: 'Luxury Villa Terrace Waterproofing & Heat Shield',
+    location: 'Jubilee Hills, Hyderabad',
+    serviceName: 'Terrace / Roof Waterproofing',
+    serviceId: 'srv-1',
+    description: 'Complete 3500 sq.ft terrace restoration with fiber mesh reinforced elastomeric membrane and 48-hour ponding test.',
+    date: '2026-06-15',
+    featured: true,
+    beforeMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=1000&q=80',
+      caption: 'Before: Severe hairline cracks, moss growth and water pooling on roof'
+    },
+    duringMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1000&q=80',
+      caption: 'During: Laying high-tensile fiberglass mesh with polymer base coat'
+    },
+    afterMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1000&q=80',
+      caption: 'After: Seamless, UV-reflective 100% leak-proof white finish'
+    }
+  },
+  {
+    id: 'proj-2',
+    name: 'Apartment Complex Basement PU Injection Grouting',
+    location: 'Gachibowli, Hyderabad',
+    serviceName: 'Pressure Grouting PU Injection',
+    serviceId: 'srv-5',
+    description: 'Stopped high-pressure groundwater ingress across basement retaining wall construction joints using dual-component expanding polyurethane.',
+    date: '2026-07-02',
+    featured: true,
+    beforeMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1000&q=80',
+      caption: 'Before: Active water gushing through basement retaining wall cracks'
+    },
+    duringMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1000&q=80',
+      caption: 'During: High pressure 3500 PSI mechanical injection of PU resin'
+    },
+    afterMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1541888946425-d0fbb186c5f7?auto=format&fit=crop&w=1000&q=80',
+      caption: 'After: Completely dry concrete with structural polymer reinforcement'
+    }
+  },
+  {
+    id: 'proj-3',
+    name: 'Multi-Floor Bathroom Leakage Rectification & Epoxy Joints',
+    location: 'Banjara Hills, Hyderabad',
+    serviceName: 'Bathroom Waterproofing',
+    serviceId: 'srv-2',
+    description: 'Eliminated wall dampness in 6 apartment bathrooms using concealed pipe sealing and stain-resistant epoxy grouting.',
+    date: '2026-07-24',
+    featured: true,
+    beforeMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80',
+      caption: 'Before: Dampness and peeling paint on adjoining bedroom wall'
+    },
+    duringMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1000&q=80',
+      caption: 'During: Raking tile joints and applying non-toxic polymer barrier'
+    },
+    afterMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80',
+      caption: 'After: Pristine waterproof tile finish with 100% dry walls'
+    }
+  },
+  {
+    id: 'proj-4',
+    name: 'Commercial Building External Facade Waterproofing',
+    location: 'Madhapur, Hyderabad',
+    serviceName: 'External Wall Waterproofing',
+    serviceId: 'srv-6',
+    description: 'Scaffolding-assisted 12,000 sq.ft exterior crack filling and weather-proof elastomeric acrylic barrier application.',
+    date: '2026-08-10',
+    featured: true,
+    beforeMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1000&q=80',
+      caption: 'Before: Visible rainwater seepage tracks and vertical wall fissures'
+    },
+    duringMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?auto=format&fit=crop&w=1000&q=80',
+      caption: 'During: V-groove elastomeric filling and anti-fungal primer coat'
+    },
+    afterMedia: {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1000&q=80',
+      caption: 'After: Weather-shielded modern exterior with 10-year durability'
+    }
+  }
+];
+
+export const INITIAL_BOOKING_FIELDS: BookingFormField[] = [
+  { id: 'f-1', name: 'customerName', label: 'Customer Name', type: 'text', placeholder: 'Enter your full name', required: true, enabled: true, order: 1 },
+  { id: 'f-2', name: 'phone', label: 'Phone Number', type: 'tel', placeholder: 'e.g. 9949293872', required: true, enabled: true, order: 2 },
+  { id: 'f-3', name: 'whatsapp', label: 'WhatsApp Number', type: 'tel', placeholder: 'e.g. 9949293872', required: false, enabled: true, order: 3 },
+  { id: 'f-4', name: 'email', label: 'Email ID', type: 'email', placeholder: 'e.g. yourname@gmail.com', required: false, enabled: true, order: 4 },
+  { id: 'f-5', name: 'location', label: 'Place / Location (Hyderabad)', type: 'text', placeholder: 'e.g. Banjara Hills, Kondapur, Kukatpally', required: true, enabled: true, order: 5 },
+  { id: 'f-6', name: 'service', label: 'Required Service', type: 'select', placeholder: 'Select a Service', required: true, enabled: true, order: 6 },
+  { id: 'f-7', name: 'workDate', label: 'Preferred Date of Work', type: 'date', placeholder: 'Select Date', required: true, enabled: true, order: 7 },
+  { id: 'f-8', name: 'preferredTime', label: 'Preferred Time Slot', type: 'select', placeholder: 'Select Time Slot', required: false, enabled: true, order: 8, options: ['Morning (9:00 AM - 12:00 PM)', 'Afternoon (12:00 PM - 4:00 PM)', 'Evening (4:00 PM - 7:00 PM)', 'Any Time / Urgent'] },
+  { id: 'f-9', name: 'message', label: 'Problem Description / Notes', type: 'textarea', placeholder: 'Describe the leakage, crack, or dampness issue...', required: false, enabled: true, order: 9 },
+  { id: 'f-10', name: 'photos', label: 'Upload Photos of Damage / Leakage', type: 'file', placeholder: 'Upload photos of water leakage, cracks, or dampness', required: false, enabled: true, order: 10 }
+];
+
+export const INITIAL_WEBSITE_CONTENT: WebsiteContent = {
+  business: {
+    name: 'TAR',
+    fullName: 'TAR Civil & Waterproofing Experts Solutions',
+    tagline: 'Reliable Waterproofing Solutions for Your Home',
+    subheading: 'CIVIL & WATERPROOFING EXPERTS',
+    heroHeading: 'Reliable Waterproofing Solutions for Your Home',
+    heroDescription: 'Specialized civil repairs, terrace waterproofing, pressure grouting, bathroom leak repair, and structural rehabilitation in Hyderabad, Telangana.',
+    heroBackgroundImage: 'https://images.unsplash.com/photo-1541888946425-d0fbb186c5f7?auto=format&fit=crop&w=1920&q=80',
+    phone: '9949293872',
+    whatsapp: '9949293872',
+    email: 'tarsolutions55@gmail.com',
+    address: 'Hyderabad, Telangana, India',
+    city: 'Hyderabad',
+    state: 'Telangana',
+    country: 'India',
+    pincode: '500001',
+    googleMapsEmbedUrl: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d243647.31604070685!2d78.26795855429688!3d17.412299800000004!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bcb99daeaebd2c7%3A0xae93b78392bafbc2!2sHyderabad%2C%20Telangana!5e0!3m2!1sen!2sin!4v1700000000000!5m2!1sen!2sin',
+    googleMapsDirectionsUrl: 'https://maps.google.com/?q=Hyderabad,+Telangana,+India',
+    workingHours: 'Monday - Sunday: 8:00 AM - 8:00 PM',
+    emergencyAvailable: true
+  },
+  about: {
+    companyIntro: 'TAR Civil & Waterproofing Experts Solutions is a premier civil and waterproofing service provider headquartered in Hyderabad, Telangana.',
+    aboutTAR: 'We specialize in permanent leak prevention, structural retrofitting, high-pressure injection grouting, and heavy-duty waterproofing for residential apartments, independent villas, commercial complexes, and industrial buildings.',
+    waterproofingExpertise: 'Our technical team utilizes high-grade polymer membranes, polyurethane resins, non-shrink mortars, and food-grade crystalline coatings engineered to withstand harsh weather and high hydrostatic pressure.',
+    civilWorks: 'Beyond waterproofing, our civil engineering capabilities encompass structural crack stitching, rebar rust treatment, column jacketing, micro-concrete repairs, and precision expansion joints.',
+    qualityAssurance: 'We believe in thorough inspection before execution, applying premium materials without dilution, and validating results with rigorous ponding and water tests.',
+    customerService: 'With direct communication, punctual site inspections, transparent pricing, and responsive customer support, TAR is Hyderabad’s trusted partner for leak-free properties.',
+    teamDescription: 'Our on-ground technicians and supervisors bring deep practical experience in diagnosing and solving the toughest water seepage challenges.'
+  },
+  whyChooseUs: [
+    {
+      id: 'wcu-1',
+      title: 'Professional Work',
+      description: 'Systematic inspection, root-cause diagnosis, and standardized application protocols for long-lasting structural protection.',
+      icon: 'ShieldCheck'
+    },
+    {
+      id: 'wcu-2',
+      title: 'Waterproofing Solutions',
+      description: 'Customized waterproofing strategies tailored for terraces, bathrooms, external walls, water sumps, and basements.',
+      icon: 'Droplets'
+    },
+    {
+      id: 'wcu-3',
+      title: 'Quality Materials',
+      description: 'We utilize certified industrial-grade polymers, elastomeric membranes, PU resins, and epoxy compounds.',
+      icon: 'Layers'
+    },
+    {
+      id: 'wcu-4',
+      title: 'Experienced Team',
+      description: 'Skilled civil technicians and applicators trained in high-pressure grouting and complex structural repairs.',
+      icon: 'HardHat'
+    },
+    {
+      id: 'wcu-5',
+      title: 'Reliable Service',
+      description: 'Punctual site visits, clear timelines, zero hidden costs, and dedicated post-service customer assistance in Hyderabad.',
+      icon: 'Clock'
+    },
+    {
+      id: 'wcu-6',
+      title: 'Customer Support',
+      description: 'Quick booking confirmation, direct phone/WhatsApp assistance, and transparent progress updates throughout.',
+      icon: 'Headphones'
+    }
+  ],
+  bookingSettings: {
+    enableBooking: true,
+    enableGuestBooking: true,
+    enableCustomerAccounts: true,
+    slotTimes: ['9:00 AM - 12:00 PM', '12:00 PM - 4:00 PM', '4:00 PM - 7:00 PM'],
+    noticeHours: 2
+  },
+  notificationSettings: {
+    adminEmail: 'tarsolutions55@gmail.com',
+    adminWhatsapp: '9949293872',
+    emailNotificationsEnabled: true,
+    whatsappNotificationsEnabled: true,
+    whatsappApiProvider: 'WhatsApp Cloud API / Webhook',
+    whatsappApiKey: '',
+    whatsappBusinessNumber: '9949293872',
+    whatsappTemplateId: 'tar_appointment_confirmation',
+    googleSheetsWebhookUrl: ''
+  },
+  reportSettings: {
+    dailyReportTime: '22:00',
+    reportEmail: 'tarsolutions55@gmail.com',
+    autoSendDailyPdf: true,
+    timezone: 'Asia/Kolkata'
+  },
+  seo: {
+    metaTitle: 'TAR Civil & Waterproofing Experts Solutions | Hyderabad',
+    metaDescription: 'Reliable waterproofing, water leakage treatment, crack filling, PU injection, and civil repair solutions in Hyderabad, Telangana. Call 9949293872.',
+    keywords: 'waterproofing Hyderabad, terrace waterproofing, bathroom leakage repair, pressure grouting, crack filling, civil repairs, TAR solutions',
+    ogTitle: 'TAR Civil & Waterproofing Experts Solutions - Hyderabad',
+    ogDescription: 'Reliable civil and waterproofing experts in Hyderabad. 100% leak-proof solutions for terraces, bathrooms, basements & water tanks.'
+  },
+  footer: {
+    aboutText: 'TAR Civil & Waterproofing Experts Solutions provides reliable, long-lasting waterproofing and civil repair services across Hyderabad, Telangana.',
+    copyrightText: '© 2026 TAR Civil & Waterproofing Experts Solutions. All rights reserved.',
+    socialLinks: {
+      facebook: 'https://facebook.com',
+      instagram: 'https://instagram.com',
+      youtube: 'https://youtube.com',
+      linkedin: 'https://linkedin.com'
+    }
+  }
+};
+
+export const INITIAL_SAMPLE_BOOKINGS: Booking[] = [
+  {
+    id: 'book-today-1',
+    bookingCode: 'TAR-2026-1008',
+    customerName: 'Anil Varma',
+    phone: '9849011223',
+    whatsapp: '9849011223',
+    email: 'anil.varma@gmail.com',
+    service: 'Terrace / Roof Waterproofing',
+    serviceId: 'srv-1',
+    location: 'Madhapur, Hitec City, Hyderabad',
+    workDate: '2026-09-02',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Roof slab leakage observed after heavy morning shower. Water dripping into living room false ceiling.',
+    bookingDate: '2026-09-01',
+    bookingTime: '08:45:00',
+    status: 'New',
+    photos: ['https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80']
+  },
+  {
+    id: 'book-today-2',
+    bookingCode: 'TAR-2026-1009',
+    customerName: 'Praveen Chary',
+    phone: '9701234567',
+    whatsapp: '9701234567',
+    email: 'praveen.chary@yahoo.com',
+    service: 'Sump & Overhead Water Tank Waterproofing',
+    serviceId: 'srv-12',
+    location: 'Kukatpally Housing Board (KPHB), Hyderabad',
+    workDate: '2026-09-03',
+    preferredTime: 'Afternoon (12:00 PM - 4:00 PM)',
+    message: 'Underground drinking water sump concrete walls have seepage and algae growth. Requires food-grade coating.',
+    bookingDate: '2026-09-01',
+    bookingTime: '10:30:00',
+    status: 'Contacted',
+    photos: []
+  },
+  {
+    id: 'book-1',
+    bookingCode: 'TAR-2026-1001',
+    customerName: 'Kishore Reddy',
+    phone: '9848012345',
+    whatsapp: '9848012345',
+    email: 'kishore.reddy@example.com',
+    service: 'Terrace / Roof Waterproofing',
+    serviceId: 'srv-1',
+    location: 'Plot 42, Raghavendra Colony, Kondapur, Hyderabad',
+    workDate: '2026-09-02',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Water dampness visible on the master bedroom ceiling after recent rain. Need immediate moisture meter survey and multi-coat elastomeric coating.',
+    bookingDate: '2026-08-31',
+    bookingTime: '09:30:00',
+    status: 'Confirmed',
+    photos: ['https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80']
+  },
+  {
+    id: 'book-2',
+    bookingCode: 'TAR-2026-1002',
+    customerName: 'Suresh Kumar',
+    phone: '9988776655',
+    whatsapp: '9988776655',
+    email: 'suresh.k@example.com',
+    service: 'Bathroom Waterproofing',
+    serviceId: 'srv-2',
+    location: 'Road No. 12, Banjara Hills, Hyderabad',
+    workDate: '2026-09-03',
+    preferredTime: 'Afternoon (12:00 PM - 4:00 PM)',
+    message: 'Continuous seepage near 2nd floor bathroom tile joints affecting adjoining bedroom wardrobe wall. Peeling paint and efflorescence.',
+    bookingDate: '2026-08-31',
+    bookingTime: '11:15:00',
+    status: 'New',
+    photos: ['https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80']
+  },
+  {
+    id: 'book-yest-3',
+    bookingCode: 'TAR-2026-1004',
+    customerName: 'Dr. Radhika Sharma',
+    phone: '9866543210',
+    whatsapp: '9866543210',
+    email: 'dr.radhika@apollohospitals.com',
+    service: 'Exterior Wall Waterproofing & Weather Defense',
+    serviceId: 'srv-7',
+    location: 'Villa 18, Palm Meadows, Jubilee Hills, Hyderabad',
+    workDate: '2026-09-04',
+    preferredTime: 'Evening (4:00 PM - 7:00 PM)',
+    message: 'Rainwater penetrating exterior western elevation brick joints causing damp patches on interior designer wallpaper.',
+    bookingDate: '2026-08-31',
+    bookingTime: '15:40:00',
+    status: 'Confirmed',
+    photos: []
+  },
+  {
+    id: 'book-3',
+    bookingCode: 'TAR-2026-1003',
+    customerName: 'Venkat Rao',
+    phone: '9440112233',
+    whatsapp: '9440112233',
+    email: 'venkat.rao@example.com',
+    service: 'Pressure Grouting PU Injection',
+    serviceId: 'srv-5',
+    location: 'Financial District, Gachibowli, Hyderabad',
+    workDate: '2026-08-30',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Basement parking retaining wall concrete honeycomb void with active water trickling. Need polyurethane foam injection.',
+    bookingDate: '2026-08-30',
+    bookingTime: '14:20:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-prev-1',
+    bookingCode: 'TAR-2026-0985',
+    customerName: 'Murali Krishna',
+    phone: '9848123987',
+    whatsapp: '9848123987',
+    email: 'murali.krishna@tcs.com',
+    service: 'Crack Filling & Waterproofing',
+    serviceId: 'srv-4',
+    location: 'Nizampet Road, Miyapur, Hyderabad',
+    workDate: '2026-08-25',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Vertical structural crack in balcony parapet wall allowing water ingress during monsoons.',
+    bookingDate: '2026-08-24',
+    bookingTime: '10:00:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-prev-2',
+    bookingCode: 'TAR-2026-0972',
+    customerName: 'Lakshmi Narayan',
+    phone: '9959887766',
+    whatsapp: '9959887766',
+    email: 'lnarayan@infosys.com',
+    service: 'Expansion Joint Treatment',
+    serviceId: 'srv-8',
+    location: 'Cyber Gateway, Hitec City, Hyderabad',
+    workDate: '2026-08-18',
+    preferredTime: 'Afternoon (12:00 PM - 4:00 PM)',
+    message: 'Commercial building expansion joint sealant failure between Tower A and Tower B.',
+    bookingDate: '2026-08-17',
+    bookingTime: '16:10:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-prev-3',
+    bookingCode: 'TAR-2026-0955',
+    customerName: 'Sunita Devi',
+    phone: '9123456789',
+    whatsapp: '9123456789',
+    email: 'sunita.devi@rediffmail.com',
+    service: 'Balcony & Slab Waterproofing',
+    serviceId: 'srv-9',
+    location: 'Diamond Point, Secunderabad',
+    workDate: '2026-08-10',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: '1st floor sit-out balcony water pooling and leaking onto ground floor car parking portico.',
+    bookingDate: '2026-08-09',
+    bookingTime: '11:45:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-hist-1',
+    bookingCode: 'TAR-2026-0890',
+    customerName: 'Chaitanya Varma',
+    phone: '9849556677',
+    whatsapp: '9849556677',
+    email: 'cvarma@gmail.com',
+    service: 'Basement & Retaining Wall Waterproofing',
+    serviceId: 'srv-6',
+    location: 'Road No. 36, Jubilee Hills, Hyderabad',
+    workDate: '2026-07-22',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Deep basement cellar soil moisture dampness in gym and home theater area.',
+    bookingDate: '2026-07-20',
+    bookingTime: '09:15:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-hist-2',
+    bookingCode: 'TAR-2026-0812',
+    customerName: 'Ramesh Naidu',
+    phone: '9440987654',
+    whatsapp: '9440987654',
+    email: 'naidu.ramesh@wipro.com',
+    service: 'Terrace / Roof Waterproofing',
+    serviceId: 'srv-1',
+    location: 'Pragathi Nagar, Kukatpally, Hyderabad',
+    workDate: '2026-06-18',
+    preferredTime: 'Afternoon (12:00 PM - 4:00 PM)',
+    message: 'Complete 2400 sq ft residential duplex terrace waterproofing with fiber mesh.',
+    bookingDate: '2026-06-16',
+    bookingTime: '14:00:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-hist-3',
+    bookingCode: 'TAR-2026-0745',
+    customerName: 'Harish Chandra',
+    phone: '9866112233',
+    whatsapp: '9866112233',
+    email: 'harish.c@gmail.com',
+    service: 'Water Leakage Treatment',
+    serviceId: 'srv-3',
+    location: 'Srinagar Colony, Panjagutta, Hyderabad',
+    workDate: '2026-05-15',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Concealed GI pipe pinhole leakage inside kitchen wall cabinet.',
+    bookingDate: '2026-05-14',
+    bookingTime: '08:30:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-hist-4',
+    bookingCode: 'TAR-2026-0680',
+    customerName: 'Bhavani Shankar',
+    phone: '9700334455',
+    whatsapp: '9700334455',
+    email: 'bhavani.shankar@gmail.com',
+    service: 'Civil Repairs & Plastering Work',
+    serviceId: 'srv-10',
+    location: 'Tarnaka, Secunderabad',
+    workDate: '2026-04-12',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Spalling concrete ceiling repair and polymer modified structural mortar application.',
+    bookingDate: '2026-04-10',
+    bookingTime: '12:10:00',
+    status: 'Completed',
+    photos: []
+  },
+  {
+    id: 'book-hist-5',
+    bookingCode: 'TAR-2026-0590',
+    customerName: 'Rajendra Prasad',
+    phone: '9948011999',
+    whatsapp: '9948011999',
+    email: 'rajendra.prasad@yahoo.in',
+    service: 'Structural Rehabilitation & Carbon Fiber Wrapping',
+    serviceId: 'srv-11',
+    location: 'Attapur, Mehdipatnam, Hyderabad',
+    workDate: '2026-03-25',
+    preferredTime: 'Morning (9:00 AM - 12:00 PM)',
+    message: 'Commercial godown load bearing column retrofitting and carbon laminate bonding.',
+    bookingDate: '2026-03-22',
+    bookingTime: '15:20:00',
+    status: 'Completed',
+    photos: []
+  }
+];

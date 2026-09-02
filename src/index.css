@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Newsreader', 'Playfair Display', Georgia, serif;
+  --font-heading: 'Newsreader', 'Playfair Display', Georgia, serif;
+  --color-paper: #F9F7F2;
+  --color-stone-light: #F2EFE9;
+  --color-stone-muted: #E8E4DB;
+  --color-border-editorial: #DCD9D1;
+  --color-ink-primary: #121212;
+  --color-ink-secondary: #3D3B35;
+  --color-ink-muted: #8C8A82;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Editorial subtle borders and typography accents */
+.editorial-border {
+  border-color: #DCD9D1;
+}
+
+.editorial-divider {
+  background-color: #DCD9D1;
+}
+
+.font-editorial-serif {
+  font-family: 'Newsreader', 'Playfair Display', Georgia, serif;
+}
+
+.font-editorial-sans {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
