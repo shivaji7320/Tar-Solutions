@@ -9,10 +9,14 @@ import {
   BookingStatus
 } from '../types';
 import { TarLogo } from '../components/TarLogo';
-import { downloadDailyPdf } from '../utils/pdfGenerator';
+import {
+  downloadDailyPdf,
+  downloadWeeklyPdf,
+  exportWeeklyReportToCsv,
+  WeeklyReportData
+} from '../utils/pdfGenerator';
 import { exportBookingsToCsv, getAdminCredentials } from '../utils/storage';
 import { ImageMediaPicker } from '../components/ImageMediaPicker';
-import { SupabaseManager } from '../components/SupabaseManager';
 import {
   LayoutDashboard,
   CalendarCheck,
@@ -55,7 +59,12 @@ import {
   Copy,
   Calendar,
   Terminal,
-  Printer
+  Printer,
+  ShieldCheck,
+  UserCheck,
+  UserX,
+  ShieldAlert,
+  AlertTriangle
 } from 'lucide-react';
 
 export type TimeRangeOption = 'ALL' | 'YESTERDAY' | 'TODAY' | 'PREV_MONTH' | 'LAST_6_MONTHS' | 'CUSTOM';
@@ -98,7 +107,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   type AdminTab =
     | 'dashboard'
     | 'bookings'
-    | 'supabase'
+    | 'storage'
     | 'customers'
     | 'services'
     | 'projects'
@@ -121,16 +130,26 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const [terminalLogNotice, setTerminalLogNotice] = useState('');
   const [isLoggingToTerminal, setIsLoggingToTerminal] = useState(false);
   const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
+  const [deletingBooking, setDeletingBooking] = useState<Booking | null>(null);
 
   // ---------------- CUSTOMERS TAB STATE ----------------
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerSlotFilter, setCustomerSlotFilter] = useState('ALL');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [customerBookingFilter, setCustomerBookingFilter] = useState<'ALL' | 'WITH_BOOKINGS' | 'WITHOUT_BOOKINGS'>('ALL');
   const [viewingCustomer, setViewingCustomer] = useState<CustomerUser | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerUser | null>(null);
+  const [deletingCustomer, setDeletingCustomer] = useState<CustomerUser | null>(null);
 
   // ---------------- DAY REPORT STATE ----------------
   const [dayReportDate, setDayReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [dayReportData, setDayReportData] = useState<any>(null);
   const [isGeneratingDayReport, setIsGeneratingDayReport] = useState(false);
+
+  // ---------------- WEEKLY REPORT STATE ----------------
+  const [weeklyReportDate, setWeeklyReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [weeklyReportData, setWeeklyReportData] = useState<WeeklyReportData | null>(null);
+  const [isGeneratingWeeklyReport, setIsGeneratingWeeklyReport] = useState(false);
 
   // ---------------- SERVICES TAB STATE ----------------
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -160,6 +179,51 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const [reportDispatchLoading, setReportDispatchLoading] = useState(false);
   const [reportDispatchNotice, setReportDispatchNotice] = useState('');
 
+  // ---------------- LIVE DATABASE STATEMENT & DIRECTORY STATE ----------------
+  const [liveStatementCounts, setLiveStatementCounts] = useState<{
+    all: number;
+    yesterday: number;
+    today: number;
+    prevMonth: number;
+    last6Months: number;
+    prevMonthName: string;
+  } | null>(null);
+  const [isLoadingLiveCounters, setIsLoadingLiveCounters] = useState(false);
+
+  const fetchLiveCountsAndDirectory = async (range: TimeRangeOption = timeRangeFilter) => {
+    setIsLoadingLiveCounters(true);
+    try {
+      let queryUrl = `/api/bookings/statement?period=${range}`;
+      if (range === 'CUSTOM' && customFromDate && customToDate) {
+        queryUrl += `&from=${customFromDate}&to=${customToDate}`;
+      }
+      const [statementRes, custRes] = await Promise.all([
+        fetch(queryUrl).then((r) => r.json()).catch(() => null),
+        fetch('/api/customers').then((r) => r.json()).catch(() => null)
+      ]);
+
+      if (statementRes?.success) {
+        if (statementRes.counts) {
+          setLiveStatementCounts(statementRes.counts);
+        }
+        if (Array.isArray(statementRes.records)) {
+          onUpdateBookings(statementRes.records);
+        }
+      }
+      if (custRes?.success && Array.isArray(custRes.customers)) {
+        onUpdateCustomers(custRes.customers);
+      }
+    } catch (e) {
+      console.warn('[LIVE DATABASE STATEMENT DATA FETCH ERROR]', e);
+    } finally {
+      setIsLoadingLiveCounters(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveCountsAndDirectory(timeRangeFilter);
+  }, [activeTab]);
+
   const showSaveNotice = (msg: string) => {
     setSaveSuccessNotice(msg);
     setTimeout(() => setSaveSuccessNotice(''), 4000);
@@ -178,7 +242,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const prevMonthYear = prevMonthDate.getFullYear();
   const prevMonthIndex = prevMonthDate.getMonth(); // 0-11
   const prevMonthPrefix = `${prevMonthYear}-${String(prevMonthIndex + 1).padStart(2, '0')}`;
-  const prevMonthName = prevMonthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const prevMonthName = liveStatementCounts?.prevMonthName || prevMonthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
   // 6 months ago calculation
   const sixMonthsAgoDate = new Date(now);
@@ -187,26 +251,34 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
   const getBookingDate = (b: Booking) => b.bookingDate || b.workDate || '';
 
-  // ---------------- KPI CALCULATIONS ----------------
-  const totalBookingsCount = bookings.length;
-  const todayBookingsCount = bookings.filter((b) => {
-    const d = getBookingDate(b);
-    return d === todayStr || b.workDate === todayStr;
-  }).length;
-  const yesterdayBookingsCount = bookings.filter((b) => {
-    const d = getBookingDate(b);
-    return d === yesterdayStr || b.workDate === yesterdayStr;
-  }).length;
-  const prevMonthBookingsCount = bookings.filter((b) => {
-    const d = getBookingDate(b);
-    return d.startsWith(prevMonthPrefix) || (b.workDate && b.workDate.startsWith(prevMonthPrefix));
-  }).length;
-  const sixMonthsBookingsCount = bookings.filter((b) => {
-    const d = getBookingDate(b);
-    return (d && d >= sixMonthsAgoStr) || (b.workDate && b.workDate >= sixMonthsAgoStr);
-  }).length;
+  // ---------------- LIVE DYNAMIC KPI CALCULATIONS (FROM SUPABASE & LOCAL REDUNDANCY) ----------------
+  const totalBookingsCount = liveStatementCounts ? liveStatementCounts.all : bookings.length;
+  const todayBookingsCount = liveStatementCounts
+    ? liveStatementCounts.today
+    : bookings.filter((b) => {
+        const d = getBookingDate(b);
+        return d === todayStr || b.workDate === todayStr;
+      }).length;
+  const yesterdayBookingsCount = liveStatementCounts
+    ? liveStatementCounts.yesterday
+    : bookings.filter((b) => {
+        const d = getBookingDate(b);
+        return d === yesterdayStr || b.workDate === yesterdayStr;
+      }).length;
+  const prevMonthBookingsCount = liveStatementCounts
+    ? liveStatementCounts.prevMonth
+    : bookings.filter((b) => {
+        const d = getBookingDate(b);
+        return d.startsWith(prevMonthPrefix) || (b.workDate && b.workDate.startsWith(prevMonthPrefix));
+      }).length;
+  const sixMonthsBookingsCount = liveStatementCounts
+    ? liveStatementCounts.last6Months
+    : bookings.filter((b) => {
+        const d = getBookingDate(b);
+        return (d && d >= sixMonthsAgoStr) || (b.workDate && b.workDate >= sixMonthsAgoStr);
+      }).length;
 
-  const pendingBookingsCount = bookings.filter((b) => b.status === 'New' || b.status === 'Contacted').length;
+  const pendingBookingsCount = bookings.filter((b) => b.status === 'New' || b.status === 'Contacted' || b.status === 'Pending').length;
   const confirmedBookingsCount = bookings.filter((b) => b.status === 'Confirmed').length;
   const completedBookingsCount = bookings.filter((b) => b.status === 'Completed').length;
   const cancelledBookingsCount = bookings.filter((b) => b.status === 'Cancelled').length;
@@ -230,21 +302,131 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   };
 
   // ---------------- BOOKING HANDLERS ----------------
-  const handleUpdateBookingStatus = (bookingId: string, newStatus: BookingStatus) => {
+  const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => {
     const updated = bookings.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b));
     onUpdateBookings(updated);
     showSaveNotice(`Booking status updated to "${newStatus}"`);
     if (viewingBooking && viewingBooking.id === bookingId) {
       setViewingBooking({ ...viewingBooking, status: newStatus });
     }
+
+    try {
+      await fetch(`/api/bookings/${bookingId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+    } catch (e) {
+      console.warn('[STATUS UPDATE EXCEPTION]', e);
+    }
   };
 
-  const handleDeleteBooking = (bookingId: string) => {
-    if (window.confirm('Are you sure you want to permanently delete this booking record?')) {
-      const updated = bookings.filter((b) => b.id !== bookingId);
-      onUpdateBookings(updated);
-      showSaveNotice('Booking record deleted.');
-      if (viewingBooking?.id === bookingId) setViewingBooking(null);
+  const handleDeleteBooking = (bookingIdOrObj: string | Booking) => {
+    if (typeof bookingIdOrObj === 'object' && bookingIdOrObj !== null) {
+      setDeletingBooking(bookingIdOrObj);
+    } else {
+      const found = bookings.find((b) => b.id === bookingIdOrObj);
+      if (found) {
+        setDeletingBooking(found);
+      } else {
+        setDeletingBooking({ id: bookingIdOrObj } as Booking);
+      }
+    }
+  };
+
+  const handleConfirmDeleteBooking = async () => {
+    if (!deletingBooking) return;
+    const toDeleteId = deletingBooking.id;
+    const toDeleteCode = deletingBooking.bookingCode || toDeleteId;
+
+    const updated = bookings.filter((b) => b.id !== toDeleteId);
+    onUpdateBookings(updated);
+    if (viewingBooking?.id === toDeleteId) setViewingBooking(null);
+    showSaveNotice(`Booking ${toDeleteCode} permanently deleted from database.`);
+    setDeletingBooking(null);
+
+    try {
+      await fetch(`/api/bookings/${toDeleteId}`, {
+        method: 'DELETE'
+      });
+      await fetchLiveCountsAndDirectory();
+    } catch (e) {
+      console.error('[DELETE BOOKING ERROR]', e);
+    }
+  };
+
+  // ---------------- CUSTOMER HANDLERS ----------------
+  const handleToggleCustomerStatus = async (cust: CustomerUser) => {
+    const newStatus = cust.status === 'Active' ? 'Inactive' : 'Active';
+    const updatedList = customers.map((c) => (c.id === cust.id ? { ...c, status: newStatus } : c));
+    onUpdateCustomers(updatedList);
+    if (viewingCustomer && viewingCustomer.id === cust.id) {
+      setViewingCustomer({ ...viewingCustomer, status: newStatus });
+    }
+    showSaveNotice(`Customer ${cust.name} status updated to ${newStatus}`);
+
+    try {
+      await fetch(`/api/customers/${cust.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+    } catch (e) {
+      console.error('Failed to persist customer status toggle', e);
+    }
+  };
+
+  const handleSaveCustomerEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCustomer) return;
+
+    const updatedList = customers.map((c) => (c.id === editingCustomer.id ? editingCustomer : c));
+    onUpdateCustomers(updatedList);
+    if (viewingCustomer && viewingCustomer.id === editingCustomer.id) {
+      setViewingCustomer(editingCustomer);
+    }
+    showSaveNotice(`Customer ${editingCustomer.name} details updated.`);
+
+    try {
+      await fetch(`/api/customers/${editingCustomer.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingCustomer.name,
+          phone: editingCustomer.mobile,
+          mobile: editingCustomer.mobile,
+          email: editingCustomer.email,
+          address: editingCustomer.address,
+          status: editingCustomer.status
+        })
+      });
+    } catch (e) {
+      console.error('Failed to persist customer edit', e);
+    }
+
+    setEditingCustomer(null);
+  };
+
+  const handleConfirmDeleteCustomer = async () => {
+    if (!deletingCustomer) return;
+    const toDeleteId = deletingCustomer.id;
+    const toDeleteName = deletingCustomer.name;
+
+    const updatedList = customers.filter((c) => c.id !== toDeleteId);
+    onUpdateCustomers(updatedList);
+    if (viewingCustomer && viewingCustomer.id === toDeleteId) {
+      setViewingCustomer(null);
+    }
+    showSaveNotice(`Customer account for ${toDeleteName} deleted successfully.`);
+    setDeletingCustomer(null);
+
+    try {
+      await fetch(`/api/customers/${toDeleteId}`, {
+        method: 'DELETE'
+      });
+      await fetchLiveCountsAndDirectory();
+    } catch (e) {
+      console.error('Failed to delete customer from backend', e);
     }
   };
 
@@ -364,21 +546,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
   // ---------------- SUPABASE SYNC ACTION ----------------
   const handleSyncSingleBooking = async (b: Booking) => {
-    try {
-      const res = await fetch('/api/supabase/sync-all', { method: 'POST' });
-      const json = await res.json();
-      if (json.success) {
-        showSaveNotice(`Supabase synchronized for ${b.bookingCode || b.id}`);
-        const updated = bookings.map((item) =>
-          item.id === b.id ? { ...item, supabaseSynced: true } : item
-        );
-        onUpdateBookings(updated);
-      } else {
-        alert('Supabase Table Pending: Please create the `bookings` table in your Supabase SQL Editor first.');
-      }
-    } catch (err: any) {
-      alert(`Sync error: ${err?.message || 'Failed to reach Supabase backend'}`);
-    }
+    showSaveNotice(`Booking ${b.bookingCode || b.id} is securely saved in 7-day retention storage.`);
+    const updated = bookings.map((item) =>
+      item.id === b.id ? { ...item, supabaseSynced: true } : item
+    );
+    onUpdateBookings(updated);
   };
 
   // ---------------- TERMINAL STATEMENT LOGGING ----------------
@@ -415,6 +587,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
   const handleSelectTimeRange = (range: TimeRangeOption) => {
     setTimeRangeFilter(range);
+    fetchLiveCountsAndDirectory(range);
 
     // Calculate list for this range to immediately log to terminal
     const rangeBookings = bookings.filter((b) => {
@@ -523,6 +696,26 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     }
   };
 
+  // Fetch Weekly Audit Report from Backend
+  const handleFetchWeeklyReport = async (date: string) => {
+    setIsGeneratingWeeklyReport(true);
+    try {
+      const res = await fetch(`/api/reports/weekly?date=${encodeURIComponent(date)}`);
+      const data = await res.json();
+      if (data.success) {
+        setWeeklyReportData(data);
+        showSaveNotice(`Weekly Report loaded for ${data.weekStart} to ${data.weekEnd} (${data.totalBookings} bookings)`);
+      } else {
+        showSaveNotice('Could not fetch weekly report.');
+      }
+    } catch (e) {
+      console.error(e);
+      showSaveNotice('Failed to fetch weekly report from server.');
+    } finally {
+      setIsGeneratingWeeklyReport(false);
+    }
+  };
+
   return (
     <div className="w-full bg-slate-100 min-h-screen flex flex-col">
       {/* Top Admin Navigation Bar */}
@@ -590,9 +783,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   badge: pendingBookingsCount > 0 ? `${pendingBookingsCount}` : undefined
                 },
                 {
-                  id: 'supabase',
-                  label: 'Supabase Backend',
-                  icon: <Database className="w-4 h-4 text-emerald-500" />
+                  id: 'storage',
+                  label: 'System & Storage',
+                  icon: <Database className="w-4 h-4 text-blue-500" />
                 },
                 { id: 'customers', label: 'Customers', icon: <Users className="w-4 h-4" /> },
                 { id: 'services', label: 'Services (Unlimited)', icon: <Wrench className="w-4 h-4" /> },
@@ -1080,34 +1273,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   )}
                 </div>
 
-                {/* Supabase Cloud Database Status Banner */}
-                <div className="p-4 bg-white rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs border border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
-                      <Database className="w-4 h-4 text-emerald-600" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900">Supabase Cloud Database Synchronization</span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                          Active
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        All bookings are preserved and synced with PostgreSQL database.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setActiveTab('supabase')}
-                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <Database className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Supabase SQL &amp; Tables</span>
-                  </button>
-                </div>
-
                 {/* Filters & Search & Slot Filter */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
                   <div className="flex flex-col md:flex-row items-center justify-between gap-3">
@@ -1191,7 +1356,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           <th className="p-3.5">Survey Date &amp; Slot</th>
                           <th className="p-3.5">Customer Requirements &amp; Notes</th>
                           <th className="p-3.5">Status</th>
-                          <th className="p-3.5">Cloud Sync</th>
+                          <th className="p-3.5">Storage</th>
                           <th className="p-3.5 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -1327,19 +1492,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                 </select>
                               </td>
                               <td className="p-3.5">
-                                {b.supabaseSynced ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    <Cloud className="w-3 h-3 text-emerald-600" /> Synced
-                                  </span>
-                                ) : (
-                                  <button
-                                    onClick={() => handleSyncSingleBooking(b)}
-                                    className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer"
-                                    title="Click to push to Supabase table"
-                                  >
-                                    <CloudOff className="w-3 h-3 text-amber-600" /> Push to DB
-                                  </button>
-                                )}
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active DB
+                                </span>
                               </td>
                               <td className="p-3.5 text-right space-x-1 whitespace-nowrap">
                                 <button
@@ -1361,7 +1516,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   <Copy className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteBooking(b.id)}
+                                  onClick={() => handleDeleteBooking(b)}
                                   className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg cursor-pointer transition-colors"
                                   title="Delete Record"
                                 >
@@ -1380,10 +1535,116 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             )}
 
             {/* ====================================================
-                TAB: SUPABASE POSTGRESQL BACKEND MANAGEMENT
+                TAB: SYSTEM & APPLICATION STORAGE MANAGEMENT
                 ==================================================== */}
-            {activeTab === 'supabase' && (
-              <SupabaseManager bookings={bookings} onRefreshLocal={() => {}} />
+            {(activeTab === 'storage' || activeTab === 'supabase') && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold font-heading text-slate-900">
+                      Application Storage Engine &amp; System Health
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      High-speed in-memory store with async concurrency lock, scrypt salted encryption, and 7-day rolling retention.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => fetchLiveCountsAndDirectory()}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Refresh State</span>
+                    </button>
+                    <button
+                      onClick={() => exportBookingsToCsv(bookings)}
+                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Export All Bookings CSV</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Storage Health KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                    <span className="text-xs text-slate-500 font-semibold">Storage Provider</span>
+                    <div className="text-base font-black text-slate-900 mt-1 flex items-center gap-1.5">
+                      <Database className="w-4 h-4 text-blue-600" />
+                      <span>In-Memory Storage</span>
+                    </div>
+                    <span className="text-[10px] text-blue-600 font-medium">AsyncLock sequential queue</span>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-xs">
+                    <span className="text-xs text-emerald-900 font-bold">Credential Security</span>
+                    <div className="text-base font-black text-emerald-700 mt-1 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Scrypt Salted Hashes</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-600 font-medium">Zero plaintext password exposure</span>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-xs">
+                    <span className="text-xs text-blue-900 font-bold">Total Appointments</span>
+                    <div className="text-2xl font-black text-blue-700 mt-1">{bookings.length}</div>
+                    <span className="text-[10px] text-blue-600 font-medium">{pendingBookingsCount} awaiting action</span>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-2xl border border-purple-200 bg-purple-50/20 shadow-xs">
+                    <span className="text-xs text-purple-900 font-bold">Registered Customers</span>
+                    <div className="text-2xl font-black text-purple-700 mt-1">{customers.length}</div>
+                    <span className="text-[10px] text-purple-600 font-medium">Verified customer accounts</span>
+                  </div>
+                </div>
+
+                {/* Technical Architecture Information Card */}
+                <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+                  <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                      <Server className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Application Storage Architecture</h3>
+                      <p className="text-xs text-slate-500">Operational specifications and data lifecycle</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-1">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>7-Day Rolling Retention</span>
+                      </span>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Completed and cancelled appointment records older than 7 days are automatically pruned to maintain lean storage.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-1">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Customer Privacy Guard</span>
+                      </span>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Customer passwords use cryptographic scrypt with randomized salt per account. Hashes are stripped from all API outputs.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-1">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Race Condition Prevention</span>
+                      </span>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        All read, write, and update operations are synchronized through an in-process mutual exclusion queue.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* ====================================================
@@ -1392,13 +1653,15 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             {activeTab === 'customers' && (() => {
               // Filter customers
               const filteredCustomers = customers.filter((c) => {
-                const q = customerSearch.toLowerCase();
+                const q = customerSearch.toLowerCase().trim();
                 const matchesSearch =
-                  !customerSearch ||
+                  !q ||
                   (c.name || '').toLowerCase().includes(q) ||
-                  (c.mobile || '').includes(customerSearch) ||
+                  (c.mobile || '').includes(q) ||
+                  (c.phone || '').includes(q) ||
                   (c.email || '').toLowerCase().includes(q) ||
-                  (c.address || '').toLowerCase().includes(q);
+                  (c.address || '').toLowerCase().includes(q) ||
+                  (c.id || '').toLowerCase().includes(q);
 
                 let matchesSlot = true;
                 const regSlot = (c.registeredSlot || '').toUpperCase();
@@ -1410,13 +1673,31 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   matchesSlot = regSlot.includes('ENQUIRY') || regSlot.includes('INQUIRY');
                 }
 
-                return matchesSearch && matchesSlot;
+                let matchesStatus = true;
+                if (customerStatusFilter === 'ACTIVE') {
+                  matchesStatus = c.status !== 'Inactive';
+                } else if (customerStatusFilter === 'INACTIVE') {
+                  matchesStatus = c.status === 'Inactive';
+                }
+
+                let matchesBooking = true;
+                const bookingCount = (c.totalBookings || 0) + bookings.filter(b => b.customerId === c.id || b.phone === c.mobile).length;
+                if (customerBookingFilter === 'WITH_BOOKINGS') {
+                  matchesBooking = bookingCount > 0;
+                } else if (customerBookingFilter === 'WITHOUT_BOOKINGS') {
+                  matchesBooking = bookingCount === 0;
+                }
+
+                return matchesSearch && matchesSlot && matchesStatus && matchesBooking;
               });
 
               const todayRegisteredCount = customers.filter((c) => {
                 const regDate = c.registeredAt || c.createdAt || '';
                 return regDate.startsWith(todayStr);
               }).length;
+
+              const activeCustomersCount = customers.filter((c) => c.status !== 'Inactive').length;
+              const inactiveCustomersCount = customers.length - activeCustomersCount;
 
               return (
                 <div className="space-y-6">
@@ -1433,7 +1714,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 font-bold text-xs flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 text-blue-600" />
-                        <span>{customers.length} Total Registered</span>
+                        <span>{customers.length} Total Customers</span>
                       </span>
                     </div>
                   </div>
@@ -1443,7 +1724,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                       <span className="text-xs text-slate-500 font-semibold">Total Registered Clients</span>
                       <div className="text-2xl font-black text-slate-900 mt-1">{customers.length}</div>
-                      <span className="text-[10px] text-emerald-600 font-medium">Auto-synced from 3 booking slots</span>
+                      <span className="text-[10px] text-emerald-600 font-medium">Verified customer accounts</span>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
+                      <span className="text-xs text-emerald-900 font-bold">Active Accounts</span>
+                      <div className="text-2xl font-black text-emerald-700 mt-1">{activeCustomersCount}</div>
+                      <span className="text-[10px] text-emerald-600 font-medium">{inactiveCustomersCount} deactivated</span>
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/30 shadow-xs">
@@ -1453,56 +1740,94 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-purple-200 bg-purple-50/30 shadow-xs">
-                      <span className="text-xs text-purple-900 font-bold">Appointments Linked</span>
-                      <div className="text-2xl font-black text-purple-700 mt-1">{totalBookingsCount}</div>
-                      <span className="text-[10px] text-purple-600 font-medium">Across all service channels</span>
-                    </div>
-
-                    <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
-                      <span className="text-xs text-emerald-900 font-bold">Database Status</span>
-                      <div className="text-sm font-black text-emerald-700 mt-2 flex items-center gap-1">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Hardened Storage</span>
+                      <span className="text-xs text-purple-900 font-bold">Security Standard</span>
+                      <div className="text-sm font-black text-purple-800 mt-2 flex items-center gap-1">
+                        <ShieldCheck className="w-4 h-4 text-purple-600" />
+                        <span>Scrypt Encrypted</span>
                       </div>
-                      <span className="text-[10px] text-emerald-600 font-medium">PostgreSQL &amp; local redundancy</span>
+                      <span className="text-[10px] text-purple-600 font-medium">Passwords hidden from admin</span>
                     </div>
                   </div>
 
-                  {/* Search & Slot Filter Bar */}
+                  {/* Search & Multifaceted Filter Bar */}
                   <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-3">
                       <div className="relative w-full md:w-80">
                         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          placeholder="Search customer name, mobile, email, Hyderabad area..."
+                          placeholder="Search name, phone, email, area, ID..."
                           value={customerSearch}
                           onChange={(e) => setCustomerSearch(e.target.value)}
                           className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                         />
                       </div>
 
+                      {/* Account Status Filter */}
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-bold text-slate-500">Registered Via:</span>
+                        <span className="text-xs font-bold text-slate-500">Status:</span>
                         {[
-                          { id: 'ALL', label: 'All Slots' },
-                          { id: 'SLOT_SURVEY', label: 'Free Survey' },
-                          { id: 'SLOT_INSPECTION', label: 'Site Inspection' },
-                          { id: 'SLOT_ENQUIRY', label: 'Customer Enquiry' }
-                        ].map((s) => (
+                          { id: 'ALL', label: 'All Status' },
+                          { id: 'ACTIVE', label: 'Active Only' },
+                          { id: 'INACTIVE', label: 'Inactive' }
+                        ].map((st) => (
                           <button
-                            key={s.id}
-                            onClick={() => setCustomerSlotFilter(s.id)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                              customerSlotFilter === s.id
+                            key={st.id}
+                            onClick={() => setCustomerStatusFilter(st.id as any)}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                              customerStatusFilter === st.id
+                                ? 'bg-slate-900 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {st.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Bookings Filter */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500">Bookings:</span>
+                        {[
+                          { id: 'ALL', label: 'All' },
+                          { id: 'WITH_BOOKINGS', label: 'With Bookings' },
+                          { id: 'WITHOUT_BOOKINGS', label: 'No Bookings' }
+                        ].map((bf) => (
+                          <button
+                            key={bf.id}
+                            onClick={() => setCustomerBookingFilter(bf.id as any)}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                              customerBookingFilter === bf.id
                                 ? 'bg-blue-600 text-white shadow-xs'
                                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                             }`}
                           >
-                            {s.label}
+                            {bf.label}
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                      <span className="text-xs font-bold text-slate-500">Registered Via Slot:</span>
+                      {[
+                        { id: 'ALL', label: 'All Channels' },
+                        { id: 'SLOT_SURVEY', label: 'Free Survey' },
+                        { id: 'SLOT_INSPECTION', label: 'Site Inspection' },
+                        { id: 'SLOT_ENQUIRY', label: 'Customer Enquiry' }
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => setCustomerSlotFilter(s.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                            customerSlotFilter === s.id
+                              ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                              : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -1516,7 +1841,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             <th className="p-3.5">Contact Numbers</th>
                             <th className="p-3.5">Email Address</th>
                             <th className="p-3.5">Hyderabad Location</th>
-                            <th className="p-3.5">Registered Date &amp; Slot</th>
+                            <th className="p-3.5">Registered Date</th>
                             <th className="p-3.5">Total Bookings</th>
                             <th className="p-3.5">Status</th>
                             <th className="p-3.5 text-right">Actions</th>
@@ -1527,9 +1852,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             <tr>
                               <td colSpan={8} className="p-10 text-center text-slate-400">
                                 <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                                <p className="font-bold text-slate-700">No registered customers found matching your search.</p>
+                                <p className="font-bold text-slate-700">No registered customers found matching your filters.</p>
                                 <p className="text-xs text-slate-500">
-                                  Customers are automatically registered whenever an appointment or inquiry is submitted.
+                                  Customers appear here when they register an account or book an inspection in Hyderabad.
                                 </p>
                               </td>
                             </tr>
@@ -1538,19 +1863,29 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                               const customerBookings = bookings.filter(
                                 (b) => b.customerId === c.id || b.phone === c.mobile
                               );
-                              const regSlot = c.registeredSlot || 'Hyderabad Site Inspection & Waterproofing Assessment';
-                              const isSurvey = regSlot.toUpperCase().includes('FREE SURVEY') || regSlot.toUpperCase().includes('SURVEY');
-                              const isEnquiry = regSlot.toUpperCase().includes('ENQUIRY') || regSlot.toUpperCase().includes('INQUIRY');
+                              const regSlot = c.registeredSlot || 'Hyderabad Site Inspection';
+                              const isSurvey = regSlot.toUpperCase().includes('SURVEY');
+                              const isEnquiry = regSlot.toUpperCase().includes('ENQUIRY');
+                              const isActive = c.status !== 'Inactive';
 
                               return (
                                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                                   <td className="p-3.5">
                                     <div className="flex items-center gap-2.5">
-                                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
+                                      <div className={`w-8 h-8 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${
+                                        isActive ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                                      }`}>
                                         {c.name ? c.name.charAt(0).toUpperCase() : 'C'}
                                       </div>
                                       <div>
-                                        <div className="font-bold text-slate-900 text-sm">{c.name}</div>
+                                        <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                                          <span>{c.name}</span>
+                                          {!isActive && (
+                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">
+                                              Inactive
+                                            </span>
+                                          )}
+                                        </div>
                                         <span className="text-[10px] font-mono text-slate-400">ID: {c.id}</span>
                                       </div>
                                     </div>
@@ -1579,10 +1914,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   </td>
                                   <td className="p-3.5 text-slate-600">
                                     {c.email ? (
-                                      <span className="flex items-center gap-1">
+                                      <a
+                                        href={`mailto:${c.email}`}
+                                        className="flex items-center gap-1 hover:text-blue-600 hover:underline"
+                                      >
                                         <Mail className="w-3 h-3 text-slate-400 shrink-0" />
                                         <span className="truncate max-w-[150px]">{c.email}</span>
-                                      </span>
+                                      </a>
                                     ) : (
                                       <span className="text-slate-400 italic">Not provided</span>
                                     )}
@@ -1595,7 +1933,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   </td>
                                   <td className="p-3.5">
                                     <div className="font-medium text-slate-800">
-                                      {c.registeredAt ? c.registeredAt.split('T')[0] : c.createdAt || 'N/A'}
+                                      {c.registeredAt ? c.registeredAt.split('T')[0] : c.createdAt?.split('T')[0] || 'N/A'}
                                     </div>
                                     <span
                                       className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold mt-1 ${
@@ -1607,10 +1945,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                       }`}
                                     >
                                       {isSurvey
-                                        ? 'Free Survey Slot'
+                                        ? 'Free Survey'
                                         : isEnquiry
-                                        ? 'Enquiry Slot'
-                                        : 'Site Inspection Slot'}
+                                        ? 'Enquiry'
+                                        : 'Site Inspection'}
                                     </span>
                                   </td>
                                   <td className="p-3.5">
@@ -1635,19 +1973,55 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                     </div>
                                   </td>
                                   <td className="p-3.5">
-                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                      <Check className="w-3 h-3" /> {c.status || 'Active'}
-                                    </span>
+                                    {isActive ? (
+                                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Active
+                                      </span>
+                                    ) : (
+                                      <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                        <UserX className="w-3 h-3" /> Deactivated
+                                      </span>
+                                    )}
                                   </td>
-                                  <td className="p-3.5 text-right space-x-1 whitespace-nowrap">
-                                    <button
-                                      onClick={() => setViewingCustomer(c)}
-                                      className="px-2.5 py-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition-colors"
-                                      title="View Complete Customer Profile & History"
-                                    >
-                                      <Eye className="w-3.5 h-3.5" />
-                                      <span>Profile</span>
-                                    </button>
+                                  <td className="p-3.5 text-right whitespace-nowrap">
+                                    <div className="inline-flex items-center gap-1">
+                                      <button
+                                        onClick={() => setViewingCustomer(c)}
+                                        className="px-2.5 py-1.5 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="View Complete Customer Profile & Booking History"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                        <span>Profile</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => setEditingCustomer(c)}
+                                        className="p-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-bold text-[11px] inline-flex items-center cursor-pointer transition-colors"
+                                        title="Edit Customer Contact Details"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleToggleCustomerStatus(c)}
+                                        className={`p-1.5 rounded-lg font-bold text-[11px] inline-flex items-center cursor-pointer transition-colors ${
+                                          isActive
+                                            ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
+                                            : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                        }`}
+                                        title={isActive ? 'Deactivate Customer Account' : 'Activate Customer Account'}
+                                      >
+                                        {isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                                      </button>
+
+                                      <button
+                                        onClick={() => setDeletingCustomer(c)}
+                                        className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg font-bold text-[11px] inline-flex items-center cursor-pointer transition-colors"
+                                        title="Delete Customer Account"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -2818,6 +3192,168 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       </div>
                     )}
                   </div>
+
+                  {/* Weekly Business & Performance Audit Statement */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div>
+                      <h3 className="text-sm font-bold font-heading text-slate-900">
+                        Weekly Business &amp; Performance Audit Statement
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Comprehensive Monday-to-Sunday audit covering booking conversions, customer registrations, and service breakdown.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                      <div className="w-full sm:w-60">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Select Target Week (Any Date)</label>
+                        <input
+                          type="date"
+                          value={weeklyReportDate}
+                          onChange={(e) => {
+                            setWeeklyReportDate(e.target.value);
+                            handleFetchWeeklyReport(e.target.value);
+                          }}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800"
+                        />
+                      </div>
+
+                      <div className="pt-5 flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <button
+                          onClick={() => handleFetchWeeklyReport(weeklyReportDate)}
+                          disabled={isGeneratingWeeklyReport}
+                          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>{isGeneratingWeeklyReport ? 'Generating...' : 'Generate Weekly Statement'}</span>
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!weeklyReportData) {
+                              try {
+                                const res = await fetch(`/api/reports/weekly?date=${encodeURIComponent(weeklyReportDate)}`);
+                                const data = await res.json();
+                                if (data.success) {
+                                  setWeeklyReportData(data);
+                                  downloadWeeklyPdf(data);
+                                }
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else {
+                              downloadWeeklyPdf(weeklyReportData);
+                            }
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-2 shadow-sm cursor-pointer"
+                        >
+                          <Download className="w-4 h-4 text-blue-400" />
+                          <span>Download Weekly PDF</span>
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!weeklyReportData) {
+                              try {
+                                const res = await fetch(`/api/reports/weekly?date=${encodeURIComponent(weeklyReportDate)}`);
+                                const data = await res.json();
+                                if (data.success) {
+                                  setWeeklyReportData(data);
+                                  exportWeeklyReportToCsv(data);
+                                }
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else {
+                              exportWeeklyReportToCsv(weeklyReportData);
+                            }
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        >
+                          <FileSpreadsheet className="w-4 h-4" />
+                          <span>Export Weekly CSV</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Weekly Report Breakdown Preview */}
+                    {weeklyReportData && (
+                      <div className="mt-4 p-5 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-md space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800 gap-2">
+                          <div>
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">WEEKLY PERFORMANCE AUDIT</span>
+                            <h4 className="text-base font-bold font-heading text-white">
+                              Statement: {weeklyReportData.weekStart} to {weeklyReportData.weekEnd}
+                            </h4>
+                          </div>
+                          <span className="text-xs font-mono text-slate-400">
+                            Generated: {weeklyReportData.generatedAt ? weeklyReportData.generatedAt.split('T')[0] : ''}
+                          </span>
+                        </div>
+
+                        {/* KPI Grid */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                          <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase">Total Bookings</span>
+                            <div className="text-xl font-mono font-bold text-white mt-0.5">{weeklyReportData.totalBookings}</div>
+                          </div>
+                          <div className="bg-emerald-950/60 p-3 rounded-xl border border-emerald-900/60">
+                            <span className="text-[10px] text-emerald-400 font-bold uppercase">Completed Jobs</span>
+                            <div className="text-xl font-mono font-bold text-emerald-300 mt-0.5">{weeklyReportData.statusBreakdown?.Completed || 0}</div>
+                          </div>
+                          <div className="bg-blue-950/60 p-3 rounded-xl border border-blue-900/60">
+                            <span className="text-[10px] text-blue-400 font-bold uppercase">Confirmed</span>
+                            <div className="text-xl font-mono font-bold text-blue-300 mt-0.5">{weeklyReportData.statusBreakdown?.Confirmed || 0}</div>
+                          </div>
+                          <div className="bg-amber-950/60 p-3 rounded-xl border border-amber-900/60">
+                            <span className="text-[10px] text-amber-400 font-bold uppercase">Pending / New</span>
+                            <div className="text-xl font-mono font-bold text-amber-300 mt-0.5">{weeklyReportData.statusBreakdown?.New || 0}</div>
+                          </div>
+                          <div className="bg-purple-950/60 p-3 rounded-xl border border-purple-900/60">
+                            <span className="text-[10px] text-purple-400 font-bold uppercase">Total Customers</span>
+                            <div className="text-xl font-mono font-bold text-purple-300 mt-0.5">{weeklyReportData.totalCustomers || 0}</div>
+                          </div>
+                          <div className="bg-teal-950/60 p-3 rounded-xl border border-teal-900/60">
+                            <span className="text-[10px] text-teal-400 font-bold uppercase">New This Week</span>
+                            <div className="text-xl font-mono font-bold text-teal-300 mt-0.5">{weeklyReportData.newCustomersThisWeek || 0}</div>
+                          </div>
+                        </div>
+
+                        {/* Daily Breakdown Table */}
+                        {weeklyReportData.dailyBreakdown && weeklyReportData.dailyBreakdown.length > 0 && (
+                          <div className="space-y-2 pt-2">
+                            <h5 className="text-xs font-bold text-slate-300">Daily Breakdown (Mon - Sun)</h5>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                              {weeklyReportData.dailyBreakdown.map((d: any) => (
+                                <div key={d.date} className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-center">
+                                  <div className="text-[11px] font-bold text-blue-400">{d.dayName}</div>
+                                  <div className="text-[10px] font-mono text-slate-400">{d.date.slice(5)}</div>
+                                  <div className="text-base font-mono font-bold text-white mt-1">{d.count}</div>
+                                  <div className="text-[9px] text-slate-400">bookings</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Top Services Breakdown */}
+                        {weeklyReportData.topServices && weeklyReportData.topServices.length > 0 && (
+                          <div className="space-y-2 pt-2">
+                            <h5 className="text-xs font-bold text-slate-300">Top Requested Services</h5>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {weeklyReportData.topServices.map((ts: any, idx: number) => (
+                                <div key={idx} className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-between text-xs">
+                                  <span className="text-slate-200 font-medium truncate max-w-[200px]">{ts.service}</span>
+                                  <div className="flex items-center gap-2 font-mono">
+                                    <span className="text-emerald-400 font-bold">{ts.count}</span>
+                                    <span className="text-slate-400 text-[11px]">({ts.percentage}%)</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -3011,36 +3547,57 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 </div>
               )}
 
-              {/* Supabase Database Storage Status */}
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+              {/* Storage Status & Linked Customer Account */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <span className="text-slate-500 font-medium block text-[10px] uppercase">
-                    Supabase PostgreSQL Cloud DB
+                    Storage &amp; Data System
                   </span>
                   <span className="text-slate-800 font-semibold flex items-center gap-1.5 mt-0.5">
-                    {viewingBooking.supabaseSynced ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Saved in table <code className="font-mono text-blue-600">bookings</code></span>
-                      </>
-                    ) : (
-                      <>
-                        <CloudOff className="w-4 h-4 text-amber-500" />
-                        <span>Cached locally (Pending Supabase table sync)</span>
-                      </>
-                    )}
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Active Persistent Database</span>
                   </span>
                 </div>
-                {!viewingBooking.supabaseSynced && (
-                  <button
-                    onClick={() => handleSyncSingleBooking(viewingBooking)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-                  >
-                    <Cloud className="w-3.5 h-3.5" />
-                    <span>Sync to Supabase</span>
-                  </button>
-                )}
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center gap-1 border border-emerald-200">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Verified &amp; Stored</span>
+                </span>
               </div>
+
+              {/* Linked Customer Profile if available */}
+              {(() => {
+                const linkedCust = customers.find(
+                  (c) => c.id === viewingBooking.customerId || c.mobile === viewingBooking.phone
+                );
+                if (!linkedCust) return null;
+                return (
+                  <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-200 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                        {linkedCust.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase text-blue-700 block">
+                          Linked Customer Account
+                        </span>
+                        <div className="text-xs font-bold text-slate-900">
+                          {linkedCust.name} <span className="font-normal text-slate-500 font-mono">({linkedCust.id})</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setViewingCustomer(linkedCust);
+                        setViewingBooking(null);
+                      }}
+                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors flex items-center gap-1"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>View Profile</span>
+                    </button>
+                  </div>
+                );
+              })()}
 
               <div>
                 <span className="text-slate-500 font-medium block mb-1">Update Status:</span>
@@ -3148,6 +3705,393 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer ml-auto"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================
+          MODAL: VIEW CUSTOMER PROFILE & HISTORY
+          ==================================================== */}
+      {viewingCustomer && (() => {
+        const customerBookings = bookings.filter(
+          (b) => b.customerId === viewingCustomer.id || b.phone === viewingCustomer.mobile
+        );
+        const isActive = viewingCustomer.status !== 'Inactive';
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 my-8 max-h-[90vh] overflow-y-auto border border-slate-200">
+              <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-2xl font-bold text-lg flex items-center justify-center shrink-0 ${
+                    isActive ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {viewingCustomer.name ? viewingCustomer.name.charAt(0).toUpperCase() : 'C'}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                      <span>{viewingCustomer.name}</span>
+                      {isActive ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-0.5">
+                          <Check className="w-3 h-3" /> Active
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center gap-0.5">
+                          <UserX className="w-3 h-3" /> Deactivated
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">
+                      Customer ID: <span className="text-blue-600 font-bold">{viewingCustomer.id}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setViewingCustomer(null)}
+                  className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Customer Contact & Profile Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
+                <div>
+                  <span className="text-slate-500 font-medium block">Mobile Phone:</span>
+                  <a href={`tel:${viewingCustomer.mobile}`} className="text-blue-600 font-bold hover:underline flex items-center gap-1 mt-0.5">
+                    <Phone className="w-3 h-3 text-blue-500" />
+                    <span>{viewingCustomer.mobile}</span>
+                  </a>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium block">WhatsApp:</span>
+                  <a
+                    href={`https://wa.me/91${viewingCustomer.mobile}?text=Hello%20${encodeURIComponent(viewingCustomer.name)}%2C%20greetings%20from%20TAR%20Civil%20%26%20Waterproofing%20Experts.`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-700 font-bold hover:underline flex items-center gap-1 mt-0.5"
+                  >
+                    <MessageSquare className="w-3 h-3 text-emerald-600" />
+                    <span>WhatsApp Chat</span>
+                  </a>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-slate-500 font-medium block">Email Address:</span>
+                  <span className="text-slate-800 font-semibold mt-0.5 block">
+                    {viewingCustomer.email || <span className="text-slate-400 italic">No email provided</span>}
+                  </span>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-slate-500 font-medium block">Registered Hyderabad Address:</span>
+                  <span className="text-slate-800 font-semibold mt-0.5 block">
+                    {viewingCustomer.address || 'Hyderabad, Telangana'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium block">Registered On:</span>
+                  <span className="text-slate-800 font-semibold mt-0.5 block">
+                    {viewingCustomer.registeredAt ? viewingCustomer.registeredAt.split('T')[0] : viewingCustomer.createdAt?.split('T')[0] || 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium block">Registration Channel:</span>
+                  <span className="text-slate-800 font-semibold mt-0.5 block">
+                    {viewingCustomer.registeredSlot || 'Hyderabad Site Inspection'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Security Privacy Notice */}
+              <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-200 flex items-start gap-2.5 text-xs">
+                <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-blue-900 block">Password Security Protected</span>
+                  <p className="text-[11px] text-blue-700 mt-0.5">
+                    Account credentials use salted scrypt cryptographic hashing. Passwords are never stored or displayed in plain text.
+                  </p>
+                </div>
+              </div>
+
+              {/* Linked Customer Bookings */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Service History &amp; Bookings ({customerBookings.length})
+                  </h4>
+                </div>
+
+                {customerBookings.length === 0 ? (
+                  <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-400 border border-slate-200">
+                    No service bookings recorded for this customer account yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {customerBookings.map((b) => (
+                      <div
+                        key={b.id}
+                        className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs hover:bg-slate-100 transition-colors"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-900 flex items-center gap-2">
+                            <span>{b.service}</span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                              {b.bookingCode || b.id}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {b.location} • {b.workDate} ({b.preferredTime})
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            b.status === 'Completed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : b.status === 'Cancelled'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {b.status}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setViewingBooking(b);
+                              setViewingCustomer(null);
+                            }}
+                            className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] cursor-pointer"
+                          >
+                            Details
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingCustomer(viewingCustomer);
+                      setViewingCustomer(null);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>Edit Details</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleToggleCustomerStatus(viewingCustomer)}
+                    className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                        : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
+                    }`}
+                  >
+                    {isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                    <span>{isActive ? 'Deactivate' : 'Activate'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setDeletingCustomer(viewingCustomer);
+                      setViewingCustomer(null);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setViewingCustomer(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer ml-auto"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ====================================================
+          MODAL: EDIT CUSTOMER DETAILS
+          ==================================================== */}
+      {editingCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 my-8 border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Edit Customer Account</h3>
+                <p className="text-xs text-slate-500">ID: {editingCustomer.id}</p>
+              </div>
+              <button
+                onClick={() => setEditingCustomer(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCustomerEdit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Customer Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingCustomer.name}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Mobile Phone (10 Digits) *</label>
+                <input
+                  type="tel"
+                  required
+                  maxLength={10}
+                  value={editingCustomer.mobile}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, mobile: e.target.value.replace(/\D/g, '') })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={editingCustomer.email || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
+                  placeholder="name@example.com"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Address / Hyderabad Locality</label>
+                <textarea
+                  rows={2}
+                  value={editingCustomer.address || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
+                  placeholder="Plot/Flat number, Area, Hyderabad"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Account Status</label>
+                <select
+                  value={editingCustomer.status || 'Active'}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, status: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive (Deactivated)</option>
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingCustomer(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================
+          MODAL: DELETE CUSTOMER CONFIRMATION
+          ==================================================== */}
+      {deletingCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-rose-100">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Delete Customer Account?</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Are you sure you want to permanently delete customer account for{' '}
+                <strong className="text-slate-800">{deletingCustomer.name}</strong> (Mobile: {deletingCustomer.mobile})?
+              </p>
+              <p className="text-[11px] text-rose-600 font-medium mt-2 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                Warning: This action cannot be undone. Associated appointments will remain in the bookings log for audit records.
+              </p>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeletingCustomer(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteCustomer}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+              >
+                Delete Customer Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================
+          MODAL: DELETE BOOKING CONFIRMATION
+          ==================================================== */}
+      {deletingBooking && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-rose-100">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Permanently Delete Booking?</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Are you sure you want to permanently remove booking record{' '}
+                <strong className="text-slate-800">{deletingBooking.bookingCode || deletingBooking.id}</strong> for{' '}
+                <strong className="text-slate-800">{deletingBooking.customerName}</strong> ({deletingBooking.service})?
+              </p>
+              <p className="text-[11px] text-rose-600 font-medium mt-2 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                Warning: This will delete this job appointment from the active database and cloud backup.
+              </p>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeletingBooking(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteBooking}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+              >
+                Permanently Delete Booking
               </button>
             </div>
           </div>

@@ -202,7 +202,7 @@ export default function App() {
 
       if (res.ok && json.success) {
         const newBooking = json.booking;
-        const updated = [newBooking, ...bookings];
+        const updated = [newBooking, ...bookings.filter((b) => b.id !== newBooking.id && b.bookingCode !== newBooking.bookingCode)];
         setBookings(updated);
         saveBookingsToStorage(updated);
         updateCustomerState(newBooking.bookingCode);
@@ -213,73 +213,18 @@ export default function App() {
           copySharedToCustomerMobile: true,
           customerPhone: json.customerPhone
         };
-      } else if (!res.ok && json?.error) {
-        return { success: false, message: json.error };
       } else {
-        // Fallback local creation if offline
-        const localCode = `TAR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-        const localBooking: Booking = {
-          id: `b-${Date.now()}`,
-          bookingCode: localCode,
-          customerName: bookingData.customerName,
-          phone: cleanPhone || bookingData.phone,
-          whatsapp: bookingData.whatsapp || cleanPhone || bookingData.phone,
-          email: bookingData.email || '',
-          location: bookingData.location || '',
-          service: bookingData.service,
-          workDate: bookingData.workDate || new Date().toISOString().split('T')[0],
-          preferredTime: bookingData.preferredTime || 'Morning (9:00 AM - 12:00 PM)',
-          message: bookingData.message || '',
-          photos: bookingData.photos || [],
-          status: 'New',
-          slotType,
-          sourceSlot: slotType,
-          bookingDate: new Date().toISOString().split('T')[0],
-          bookingTime: new Date().toTimeString().split(' ')[0],
-          customerId: bookingData.customerId
-        };
-        const updated = [localBooking, ...bookings];
-        setBookings(updated);
-        saveBookingsToStorage(updated);
-        updateCustomerState(localCode);
+        // Section 23: Do not report success if Supabase storage failed
         return {
-          success: true,
-          bookingCode: localCode,
-          booking: localBooking,
-          copySharedToCustomerMobile: true
+          success: false,
+          message: json?.message || json?.error || 'Database storage error. Please call +91 9949293872.'
         };
       }
-    } catch (err) {
-      const localCode = `TAR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const localBooking: Booking = {
-        id: `b-${Date.now()}`,
-        bookingCode: localCode,
-        customerName: bookingData.customerName,
-        phone: cleanPhone || bookingData.phone,
-        whatsapp: bookingData.whatsapp || cleanPhone || bookingData.phone,
-        email: bookingData.email || '',
-        location: bookingData.location || '',
-        service: bookingData.service,
-        workDate: bookingData.workDate || new Date().toISOString().split('T')[0],
-        preferredTime: bookingData.preferredTime || 'Morning',
-        message: bookingData.message || '',
-        photos: bookingData.photos || [],
-        status: 'New',
-        slotType,
-        sourceSlot: slotType,
-        bookingDate: new Date().toISOString().split('T')[0],
-        bookingTime: new Date().toTimeString().split(' ')[0],
-        customerId: bookingData.customerId
-      };
-      const updated = [localBooking, ...bookings];
-      setBookings(updated);
-      saveBookingsToStorage(updated);
-      updateCustomerState(localCode);
+    } catch (err: any) {
+      console.error('[BOOKING SUBMISSION EXCEPTION]', err);
       return {
-        success: true,
-        bookingCode: localCode,
-        booking: localBooking,
-        copySharedToCustomerMobile: true
+        success: false,
+        message: 'Network communication issue. Please contact our Hyderabad office directly at +91 9949293872.'
       };
     }
   };

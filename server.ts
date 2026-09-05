@@ -1,319 +1,562 @@
 import 'dotenv/config';
+
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 import { createServer as createViteServer } from 'vite';
+
 import {
-  saveBookingToSupabase,
-  checkSupabaseStatus,
-  getRecommendedSupabaseSQL,
-  syncAllBookingsToSupabase,
-  fetchBookingsFromSupabase,
-  SUPABASE_CONFIG
-} from './src/utils/supabaseServer';
-import { INITIAL_SAMPLE_BOOKINGS } from './src/data/initialData';
+  saveBooking,
+  getBookings,
+  getBookingById,
+  updateBooking,
+  deleteBooking,
+  saveCustomer,
+  getCustomers,
+  getCustomerById,
+  updateCustomer,
+  deleteCustomer,
+  authenticateCustomer,
+  saveCustomerRequest,
+  getCustomerRequests,
+  updateCustomerRequest,
+  deleteCustomerRequest,
+  saveBookingStatusHistory,
+  getBookingStatusHistory,
+  cleanupExpiredRecords,
+  getStorageStatus,
+  getBookingsWithStatementFilter,
+  getRegisteredCustomersDirectory,
+  loadDb,
+  saveDb,
+  onStorageChange,
+  cleanIndianMobile,
+  generateBookingCode,
+  StorageSchema,
+  RETENTION_DAYS
+} from './src/utils/storage';
+
+/**
+ * ============================================================
+ * TAR SOLUTIONS — APPLICATION SERVER & PERSISTENT DATABASE ENGINE
+ * ============================================================
+ * Services: Civil, Waterproofing, Expansion Joints, Roof Sealing
+ * Storage:  tar_db.json + In-Memory Store with Concurrency Locking
+ * Region:   Hyderabad, Telangana (BOM1 Network Gateway)
+ * Retention: 7-Day Rolling Retention Horizon
+ * ============================================================
+ */
+console.log('╔══════════════════════════════════════════════════════════════════════╗');
+console.log('║ TAR SOLUTIONS — APPLICATION SERVER ACTIVE                            ║');
+console.log('╠══════════════════════════════════════════════════════════════════════╣');
+console.log('║ System:      Customer Portal & Booking Engine Active                 ║');
+console.log('║ Storage:     tar_db.json Persistent Store & In-Memory Engine         ║');
+console.log('║ Retention:   7-Day Rolling Horizon Active                            ║');
+console.log('╚══════════════════════════════════════════════════════════════════════╝');
 
 const app = express();
-const PORT = 3000;
 
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+const PORT = Number(process.env.PORT) || 3000;
 
-// Persistence file path for local state caching
-const DB_FILE = path.join(process.cwd(), 'tar_db.json');
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-interface DatabaseSchema {
-  services: any[];
-  projects: any[];
-  bookings: any[];
-  customers: any[];
-  content: any;
-  formFields: any[];
-  adminCreds: { username: string; passwordHash: string };
-  dailyReportLog: any[];
-}
+/**
+ * ============================================================
+ * REAL-TIME LOCAL DATABASE PERSISTENCE (tar_db.json)
+ * ============================================================
+ */
+const DB_FILE_PATH = path.join(process.cwd(), 'tar_db.json');
 
-function loadDb(): DatabaseSchema {
-  if (fs.existsSync(DB_FILE)) {
-    try {
-      const raw = fs.readFileSync(DB_FILE, 'utf-8');
-      const parsed: DatabaseSchema = JSON.parse(raw);
-      if (!parsed.adminCreds || (parsed.adminCreds.username === 'admin' && parsed.adminCreds.passwordHash === 'admin123')) {
-        parsed.adminCreds = { username: 'Tarsolutions', passwordHash: 'Tarsolutions@24' };
-        saveDb(parsed);
-      }
-      if (!parsed.bookings || parsed.bookings.length === 0) {
-        parsed.bookings = INITIAL_SAMPLE_BOOKINGS;
-        saveDb(parsed);
-      }
-      return parsed;
-    } catch (e) {
-      console.error('Error reading DB_FILE:', e);
-    }
-  }
-  const initialDb: DatabaseSchema = {
-    services: [],
-    projects: [],
-    bookings: INITIAL_SAMPLE_BOOKINGS,
-    customers: [],
-    content: null,
-    formFields: [],
-    adminCreds: { username: 'Tarsolutions', passwordHash: 'Tarsolutions@24' },
-    dailyReportLog: []
-  };
-  saveDb(initialDb);
-  return initialDb;
-}
-
-function saveDb(data: DatabaseSchema) {
+// Hydrate from tar_db.json on startup if present
+if (fs.existsSync(DB_FILE_PATH)) {
   try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const raw = fs.readFileSync(DB_FILE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      saveDb(parsed);
+      console.log(
+        `[PERSISTENCE] Hydrated from tar_db.json: ${parsed.bookings?.length || 0} bookings, ${parsed.customers?.length || 0} customers, ${parsed.customerRequests?.length || 0} requests.`
+      );
+    }
   } catch (e) {
-    console.error('Error writing DB_FILE:', e);
+    console.warn('[PERSISTENCE] Notice: Could not read existing tar_db.json:', e);
   }
 }
 
-// ---------------- API ENDPOINTS ----------------
+// Auto-sync every in-memory mutation to tar_db.json immediately
+onStorageChange((data) => {
+  try {
+    fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[PERSISTENCE] Warning: unable to write tar_db.json to disk:', err);
+  }
+});
 
-// Health check
-app.get('/api/health', (req, res) => {
+/**
+ * Run automatic expiration check on startup.
+ */
+cleanupExpiredRecords(RETENTION_DAYS).catch((err) => {
+  console.error('[STORAGE EXPIRATION INITIAL CHECK ERROR]', err);
+});
+
+/**
+ * ============================================================
+ * HEALTH
+ * ============================================================
+ */
+
+app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'TAR Civil & Waterproofing Experts Solutions API',
+    storage: `Local JSON Storage (${RETENTION_DAYS}-Day Retention)`,
     time: new Date().toISOString(),
     timezone: 'Asia/Kolkata'
   });
 });
 
-// Database state sync
-app.get(['/api/db-state', '/api/state'], (req, res) => {
-  const db = loadDb();
-  res.json(db);
+/**
+ * ============================================================
+ * DATABASE STATE
+ * ============================================================
+ */
+
+app.get(['/api/db-state', '/api/state'], (_req, res) => {
+  res.json(loadDb());
 });
 
-// Get all bookings
-app.get('/api/bookings', (req, res) => {
-  const db = loadDb();
-  res.json({
-    success: true,
-    total: db.bookings?.length || 0,
-    bookings: db.bookings || []
-  });
+/**
+ * ============================================================
+ * BOOKINGS / STATEMENTS
+ * ============================================================
+ */
+
+app.get(['/api/bookings', '/api/bookings/statement'], async (req, res) => {
+  const period = (req.query.period || 'ALL') as any;
+  const customFrom = req.query.from as string;
+  const customTo = req.query.to as string;
+  const customerId = (req.query.customerId || req.headers['x-customer-id']) as string | undefined;
+
+  try {
+    const result = await getBookingsWithStatementFilter(
+      period,
+      customFrom,
+      customTo
+    );
+
+    if (customerId) {
+      const cleanCust = String(customerId).trim();
+      result.bookings = result.bookings.filter(
+        (b: any) =>
+          b.customerId === cleanCust ||
+          b.customer_id === cleanCust ||
+          (b.phone && cleanIndianMobile(b.phone) === cleanIndianMobile(cleanCust))
+      );
+      result.total = result.bookings.length;
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('[BOOKINGS API ERROR]', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Error querying bookings'
+    });
+  }
 });
+
+/**
+ * ============================================================
+ * CUSTOMER DIRECTORY
+ * ============================================================
+ */
+
+app.get('/api/customers', async (_req, res) => {
+  try {
+    const customers = await getRegisteredCustomersDirectory();
+
+    res.json({
+      success: true,
+      customers,
+      count: customers.length
+    });
+  } catch (error: any) {
+    console.error('[CUSTOMERS API ERROR]', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Error querying customers'
+    });
+  }
+});
+
+/**
+ * ============================================================
+ * BOOKING STATUS UPDATE
+ * ============================================================
+ */
+
+app.patch(['/api/bookings/:id/status', '/api/bookings/:id'], async (req, res) => {
+  const { id } = req.params;
+  const updates = { ...req.body };
+
+  if (updates.bookingStatus && !updates.status) {
+    updates.status = updates.bookingStatus;
+  }
+
+  try {
+    const updated = await updateBooking(id, updates);
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: `Booking with ID ${id} not found.`
+      });
+    }
+
+    console.log(`[BOOKING UPDATE] ${id}: Updated fields: ${Object.keys(updates).join(', ')}`);
+
+    res.json({
+      success: true,
+      id,
+      status: updated.status,
+      bookingStatus: updated.status,
+      booking: updated
+    });
+  } catch (error: any) {
+    console.error('[BOOKING UPDATE ERROR]', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to update booking.'
+    });
+  }
+});
+
+/**
+ * ============================================================
+ * DATABASE STATE SYNC
+ * ============================================================
+ */
 
 app.post(['/api/db-state', '/api/state', '/api/sync'], (req, res) => {
   const incoming = req.body;
-  if (incoming && typeof incoming === 'object') {
-    const current = loadDb();
-    
-    // Intelligently merge bookings if provided
-    let mergedBookings = current.bookings || [];
-    if (incoming.bookings && Array.isArray(incoming.bookings)) {
-      const map = new Map<string, any>();
-      (current.bookings || []).forEach((b: any) => {
-        if (b && (b.id || b.bookingCode)) map.set(b.id || b.bookingCode, b);
-      });
-      incoming.bookings.forEach((b: any) => {
-        if (b && (b.id || b.bookingCode)) map.set(b.id || b.bookingCode, b);
-      });
-      mergedBookings = Array.from(map.values());
-    }
 
-    const merged = {
-      ...current,
-      ...incoming,
-      bookings: mergedBookings.length > 0 ? mergedBookings : current.bookings
-    };
-    saveDb(merged);
-    res.json({ success: true, message: 'Database state updated', totalBookings: merged.bookings.length });
-  } else {
-    res.status(400).json({ error: 'Invalid database payload' });
-  }
-});
-
-// Statement Logging Terminal API - Dumps full customer details to server terminal
-app.post('/api/bookings/statement-log', (req, res) => {
-  const { period, periodLabel, bookings: targetBookings, requestedBy } = req.body;
-  const list = targetBookings || [];
-  const timeInKolkata = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-
-  console.log('╔════════════════════════════════════════════════════════════════════════════════════════════════════════════╗');
-  console.log(`║ 🏢 TAR CIVIL & WATERPROOFING SOLUTIONS - CUSTOMER BOOKINGS & STATEMENT AUDIT TERMINAL                      ║`);
-  console.log('╠════════════════════════════════════════════════════════════════════════════════════════════════════════════╣');
-  console.log(`║ 📅 Statement Period:  ${(periodLabel || period || 'STATEMENT').toUpperCase().padEnd(76)}║`);
-  console.log(`║ 📊 Total Records:     ${String(list.length).padEnd(4)} appointments                                                                  ║`);
-  console.log(`║ 🕒 Generated At:      ${timeInKolkata.padEnd(76)}║`);
-  console.log('╠════════════════════════════════════════════════════════════════════════════════════════════════════════════╣');
-
-  if (list.length === 0) {
-    console.log(`║ ℹ️  No booking records registered for this specific period statement.                                      ║`);
-  } else {
-    list.forEach((b: any, index: number) => {
-      const slotName = b.slotType || b.sourceSlot || 'HYDERABAD SITE INSPECTION & WATERPROOFING ASSESSMENT';
-      console.log(`║ ────────────────────────────────────────────────────────────────────────────────────────────────────────── ║`);
-      console.log(`║ [#${index + 1}] CODE: ${String(b.bookingCode || b.id).padEnd(20)} | STATUS: [${String(b.status || 'New').toUpperCase()}] | REGISTERED: ${b.bookingDate || b.workDate} ${b.bookingTime || ''}`);
-      console.log(`║    🏷️  Slot Channel:   [${slotName}]`);
-      console.log(`║    👤 Customer Name:   ${String(b.customerName || 'N/A')}`);
-      console.log(`║    📱 Contact Mobile:  +91 ${String(b.phone || 'N/A')}  |  WhatsApp: +91 ${String(b.whatsapp || b.phone || 'N/A')}`);
-      if (b.email) console.log(`║    📧 Email Address:   ${b.email}`);
-      console.log(`║    🛠  Service Type:    ${String(b.service || 'N/A')}`);
-      console.log(`║    📍 Site Location:   ${String(b.location || 'Hyderabad, Telangana')}`);
-      console.log(`║    📅 Scheduled Date:  ${String(b.workDate || 'N/A')}  (${String(b.preferredTime || 'Standard Slot')})`);
-      if (b.message) {
-        console.log(`║    💬 Requirements:    "${String(b.message)}"`);
-      }
-      if (b.photos && b.photos.length > 0) {
-        console.log(`║    📷 Damage Photos:   ${b.photos.length} attachment(s) uploaded`);
-      }
+  if (!incoming || typeof incoming !== 'object') {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid database payload'
     });
   }
 
-  console.log('╚════════════════════════════════════════════════════════════════════════════════════════════════════════════╝');
+  const current = loadDb();
+
+  let mergedBookings = current.bookings || [];
+
+  if (Array.isArray(incoming.bookings)) {
+    const map = new Map<string, any>();
+    for (const booking of current.bookings || []) {
+      const key = booking?.id || booking?.bookingCode || booking?.booking_code;
+      if (key) map.set(String(key), booking);
+    }
+    for (const booking of incoming.bookings) {
+      const key = booking?.id || booking?.bookingCode || booking?.booking_code;
+      if (key) map.set(String(key), booking);
+    }
+    mergedBookings = Array.from(map.values());
+  }
+
+  const merged: StorageSchema = {
+    ...current,
+    ...incoming,
+    bookings: mergedBookings.length ? mergedBookings : current.bookings
+  };
+
+  saveDb(merged);
 
   res.json({
     success: true,
-    message: `Terminal statement output generated for "${periodLabel || period}". ${list.length} booking records printed with full customer details.`,
+    message: 'Database state updated',
+    totalBookings: merged.bookings.length
+  });
+});
+
+/**
+ * ============================================================
+ * TERMINAL STATEMENT LOG
+ * ============================================================
+ */
+
+app.post('/api/bookings/statement-log', (req, res) => {
+  const { period, periodLabel, bookings: targetBookings } = req.body;
+  const list = Array.isArray(targetBookings) ? targetBookings : [];
+
+  const timeInKolkata = new Date().toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata'
+  });
+
+  console.log('╔══════════════════════════════════════════════════════════════════════════════╗');
+  console.log('║ TAR SOLUTIONS - CUSTOMER BOOKINGS STATEMENT                                ║');
+  console.log('╠══════════════════════════════════════════════════════════════════════════════╣');
+  console.log(`║ Statement Period: ${String(periodLabel || period || 'STATEMENT')}`);
+  console.log(`║ Total Records: ${list.length}`);
+  console.log(`║ Generated At: ${timeInKolkata}`);
+  console.log('╠══════════════════════════════════════════════════════════════════════════════╣');
+
+  if (!list.length) {
+    console.log('║ No booking records found for this period.');
+  }
+
+  list.forEach((booking: any, index: number) => {
+    console.log(`║ [${index + 1}] ${booking.bookingCode || booking.booking_code || booking.id}`);
+    console.log(`║ Customer: ${booking.customerName || booking.customer_name || 'N/A'}`);
+    console.log(`║ Phone: +91 ${booking.phone || 'N/A'}`);
+    console.log(`║ Service: ${booking.service || booking.service_type || 'N/A'}`);
+    console.log(`║ Location: ${booking.location || 'Hyderabad, Telangana'}`);
+    console.log(`║ Status: ${booking.status || booking.bookingStatus || 'Pending'}`);
+    console.log(`║ Date: ${booking.workDate || booking.work_date || 'N/A'}`);
+    console.log('║ --------------------------------------------------------------------------');
+  });
+
+  console.log('╚══════════════════════════════════════════════════════════════════════════════╝');
+
+  res.json({
+    success: true,
     period,
     totalRecords: list.length,
     timestamp: timeInKolkata
   });
 });
 
-// Helpers for Indian mobile numbers
-function cleanIndianMobile(raw: string): string {
-  const digits = (raw || '').replace(/\D/g, '');
-  if (digits.startsWith('91') && digits.length === 12) return digits.slice(2);
-  if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
-  return digits;
-}
+/**
+ * ============================================================
+ * BOOKING SUBMISSION
+ * ============================================================
+ */
 
-// Booking submission with automated multi-channel forwarding & customer directory auto-registration
 app.post('/api/bookings', async (req, res) => {
-  const booking = req.body;
-  if (!booking.customerName || !booking.phone || !booking.service) {
-    return res.status(400).json({ error: 'Missing required booking fields (Name, Phone, Service)' });
+  const incoming = req.body || {};
+
+  const customerName = String(
+    incoming.customerName || incoming.customer_name || ''
+  ).trim();
+
+  const phone = cleanIndianMobile(incoming.phone);
+
+  const service = String(
+    incoming.service || incoming.serviceType || incoming.service_type || ''
+  ).trim();
+
+  if (!customerName || !phone || phone.length !== 10 || !service) {
+    return res.status(400).json({
+      success: false,
+      error: 'Name, valid 10-digit Indian mobile number and service are required.'
+    });
   }
 
-  const cleanPhone = cleanIndianMobile(booking.phone);
   const db = loadDb();
-  const year = new Date().getFullYear();
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  const bookingCode = booking.bookingCode || `TAR-${year}-${rand}`;
-  const timeInKolkata = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const bookingCode = generateBookingCode(db.bookings);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const currentTime = now.toISOString().slice(11, 19);
 
-  // Determine slot source name
-  const slotType = booking.slotType || booking.sourceSlot || 'HYDERABAD SITE INSPECTION & WATERPROOFING ASSESSMENT';
+  const slotType = String(
+    incoming.slotType ||
+    incoming.sourceSlot ||
+    incoming.sourceChannel ||
+    'HYDERABAD SITE INSPECTION & WATERPROOFING ASSESSMENT'
+  ).trim();
 
-  const newBooking: any = {
-    id: booking.id || `book-${Date.now()}`,
-    bookingCode,
-    customerName: booking.customerName.trim(),
-    phone: cleanPhone,
-    whatsapp: cleanIndianMobile(booking.whatsapp || cleanPhone),
-    email: (booking.email || '').trim(),
-    service: booking.service,
-    serviceId: booking.serviceId || '',
-    location: booking.location || 'Hyderabad, Telangana',
-    workDate: booking.workDate || new Date().toISOString().split('T')[0],
-    preferredTime: booking.preferredTime || 'Morning (9:00 AM - 12:00 PM)',
-    message: booking.message || '',
-    photos: booking.photos || [],
-    bookingDate: booking.bookingDate || new Date().toISOString().split('T')[0],
-    bookingTime: booking.bookingTime || new Date().toTimeString().split(' ')[0],
-    status: 'New',
-    slotType,
-    sourceSlot: slotType,
-    createdAt: new Date().toISOString(),
-    registeredAt: `${booking.bookingDate || new Date().toISOString().split('T')[0]} ${booking.bookingTime || new Date().toTimeString().split(' ')[0]}`,
-    supabaseSynced: false,
-    supabaseTable: '',
-    supabaseError: ''
-  };
+  const explicitCustId = String(
+    incoming.customerId || incoming.customer_id || req.headers['x-customer-id'] || ''
+  ).trim();
 
-  db.bookings = [newBooking, ...(db.bookings || [])];
+  let actualCustomerId = explicitCustId;
+  let existingCustomer = null;
 
-  // -------------------------------------------------------------
-  // HARDENED DATABASE: AUTO-REGISTER CUSTOMER IN CUSTOMER DIRECTORY
-  // -------------------------------------------------------------
-  const existingCustomers: any[] = db.customers || [];
-  const existingIndex = existingCustomers.findIndex(
-    (c) => cleanIndianMobile(c.mobile) === cleanPhone || (c.email && booking.email && c.email.toLowerCase() === booking.email.toLowerCase())
-  );
+  if (explicitCustId) {
+    existingCustomer = await getCustomerById(explicitCustId);
+  }
+  if (!existingCustomer && phone) {
+    existingCustomer = await getCustomerById(phone);
+  }
 
-  let registeredCustomerRecord: any = null;
-
-  if (existingIndex >= 0) {
-    // Update existing customer profile & increment booking count
-    const existing = existingCustomers[existingIndex];
-    const customerBookingsCount = (db.bookings || []).filter((b: any) => cleanIndianMobile(b.phone) === cleanPhone).length;
-    
-    existingCustomers[existingIndex] = {
-      ...existing,
-      name: booking.customerName.trim() || existing.name,
-      email: (booking.email || '').trim() || existing.email,
-      address: booking.location || existing.address || 'Hyderabad, Telangana',
-      totalBookings: customerBookingsCount,
-      lastBookingDate: newBooking.workDate,
-      registeredSlot: existing.registeredSlot || slotType
-    };
-    registeredCustomerRecord = existingCustomers[existingIndex];
+  if (existingCustomer) {
+    actualCustomerId = existingCustomer.id;
+    const currentCodes = Array.isArray(existingCustomer.bookingCodes) ? existingCustomer.bookingCodes : [];
+    await updateCustomer(actualCustomerId, {
+      totalBookings: (existingCustomer.totalBookings || 0) + 1,
+      lastBookingDate: today,
+      bookingCodes: Array.from(new Set([...currentCodes, bookingCode]))
+    });
   } else {
-    // Auto-create new registered customer profile
-    registeredCustomerRecord = {
-      id: `cust-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
-      name: booking.customerName.trim(),
-      mobile: cleanPhone,
-      email: (booking.email || '').trim(),
-      address: booking.location || 'Hyderabad, Telangana',
-      createdAt: new Date().toISOString().split('T')[0],
-      registeredAt: `${newBooking.bookingDate} ${newBooking.bookingTime}`,
+    // Save/Update Customer in storage layer
+    const customerId = explicitCustId || randomUUID();
+    const customerRecord = {
+      id: customerId,
+      customerCode: `CA-CUST-${phone.slice(-5)}`,
+      name: customerName,
+      customerName: customerName,
+      phone: phone,
+      mobile: phone,
+      alternatePhone: incoming.alternatePhone ? cleanIndianMobile(incoming.alternatePhone) : null,
+      whatsapp: incoming.whatsapp ? cleanIndianMobile(incoming.whatsapp) : phone,
+      email: incoming.email ? String(incoming.email).trim() : null,
+      address: incoming.address || incoming.location || 'Hyderabad, Telangana',
+      area: incoming.area || null,
+      city: incoming.city || 'Hyderabad',
+      state: incoming.state || 'Telangana',
+      pincode: incoming.pincode || null,
       status: 'Active',
       registeredSlot: slotType,
+      sourceChannel: slotType,
       totalBookings: 1,
-      lastBookingDate: newBooking.workDate,
-      bookingCodes: [bookingCode]
+      bookingCodes: [bookingCode],
+      lastBookingDate: today,
+      registeredAt: now.toISOString(),
+      createdAt: now.toISOString()
     };
-    existingCustomers.unshift(registeredCustomerRecord);
+
+    const savedCustomer = await saveCustomer(customerRecord);
+    actualCustomerId = savedCustomer.id || customerId;
   }
 
-  db.customers = existingCustomers;
-  saveDb(db);
+  // Build Booking Object
+  const bookingId = randomUUID();
+  const workDate = incoming.workDate || incoming.work_date || incoming.preferredDate || today;
+  const preferredTime = incoming.preferredTime || incoming.preferred_time || 'Morning (9:00 AM - 12:00 PM)';
+  const message = incoming.message || incoming.notes || '';
+  const photos = Array.isArray(incoming.photos) ? incoming.photos : [];
 
-  // Format official text receipt
-  const receiptText = `*🏢 TAR CIVIL & WATERPROOFING EXPERTS SOLUTIONS*
-_Official Hyderabad & Telangana Survey Confirmation_
-━━━━━━━━━━━━━━━━━━━━━
-📋 *Booking Reference:* ${newBooking.bookingCode}
-🏷️ *Slot Channel:* ${slotType}
-👤 *Customer Name:* ${newBooking.customerName}
-📱 *Mobile Number:* +91 ${cleanPhone}
-🛠 *Service Discipline:* ${newBooking.service}
-📍 *Site Location:* ${newBooking.location}
-📅 *Survey Date:* ${newBooking.workDate}
-⏰ *Time Window:* ${newBooking.preferredTime}
-${newBooking.message ? `💬 *Site Requirements:* ${newBooking.message}\n` : ''}━━━━━━━━━━━━━━━━━━━━━
-✅ *Status:* Confirmed & Stored in Database
-📞 *Direct Helpline:* +91 9949293872
-📧 *Official Email:* tarsolutions55@gmail.com
-🕒 *Timestamp:* ${timeInKolkata}
-━━━━━━━━━━━━━━━━━━━━━
-_Our chief engineer will visit your site for physical inspection and moisture analysis._`;
+  const requestType =
+    slotType.toLowerCase().includes('enquiry') || slotType.toLowerCase().includes('request')
+      ? 'Customer Enquiry'
+      : 'Site Inspection';
 
-  // Pre-generate direct dispatch URLs for client-side automated forwarding
-  const customerWhatsAppUrl = `https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(receiptText)}`;
+  const newBookingData = {
+    id: bookingId,
+    bookingCode: bookingCode,
+    booking_code: bookingCode,
+    customerId: actualCustomerId,
+    customer_id: actualCustomerId,
+    customerName: customerName,
+    customer_name: customerName,
+    phone: phone,
+    alternatePhone: incoming.alternatePhone ? cleanIndianMobile(incoming.alternatePhone) : null,
+    whatsapp: incoming.whatsapp ? cleanIndianMobile(incoming.whatsapp) : phone,
+    email: incoming.email ? String(incoming.email).trim() : null,
+    service: service,
+    serviceType: service,
+    service_type: service,
+    serviceId: incoming.serviceId || incoming.service_id || '',
+    requestType: requestType,
+    request_type: requestType,
+    location: incoming.location || incoming.projectLocation || 'Hyderabad, Telangana',
+    projectLocation: incoming.location || incoming.projectLocation || 'Hyderabad, Telangana',
+    workDate: workDate,
+    work_date: workDate,
+    preferredDate: workDate,
+    preferredTime: preferredTime,
+    preferred_time: preferredTime,
+    message: message,
+    notes: message,
+    photos: photos,
+    bookingDate: incoming.bookingDate || today,
+    booking_date: incoming.bookingDate || today,
+    bookingTime: incoming.bookingTime || currentTime,
+    booking_time: incoming.bookingTime || currentTime,
+    status: 'Pending',
+    bookingStatus: 'Pending',
+    booking_status: 'Pending',
+    orderStatus: 'Received',
+    order_status: 'Received',
+    slotType: slotType,
+    sourceSlot: slotType,
+    sourceChannel: slotType,
+    source_channel: slotType,
+    createdAt: now.toISOString(),
+    created_at: now.toISOString(),
+    updatedAt: now.toISOString(),
+    updated_at: now.toISOString()
+  };
+
+  // Save Booking in storage layer
+  let savedBooking;
+  try {
+    savedBooking = await saveBooking(newBookingData);
+  } catch (storageError: any) {
+    console.error('[STORAGE ERROR - BOOKING SAVE FAILED]', storageError);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to securely store booking in application storage. Please try again or call TAR Helpline.'
+    });
+  }
+
+  // If customer enquiry, also save to customer requests in storage layer
+  if (
+    slotType.toLowerCase().includes('enquiry') ||
+    slotType.toLowerCase().includes('request')
+  ) {
+    try {
+      await saveCustomerRequest({
+        id: randomUUID(),
+        requestCode: `REQ-${new Date().getFullYear()}-${String(savedBooking.bookingCode || '000001').slice(-6)}`,
+        customerId: actualCustomerId,
+        customerName: customerName,
+        phone: phone,
+        email: savedBooking.email,
+        service: service,
+        requestType: 'Customer Enquiry & Service Request',
+        location: savedBooking.location,
+        preferredDate: workDate,
+        preferredTime: preferredTime,
+        message: message,
+        slotType: slotType
+      });
+    } catch (reqError) {
+      console.error('[STORAGE REQUEST ERROR]', reqError);
+    }
+  }
+
+  // Communication & Receipts
+  const timeInKolkata = now.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata'
+  });
+
+  const receiptText =
+    `*🏢 TAR CIVIL & WATERPROOFING EXPERTS SOLUTIONS*\n` +
+    `_Official Hyderabad & Telangana Survey Confirmation_\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📋 *Booking Reference:* ${bookingCode}\n` +
+    `🏷️ *Slot Channel:* ${slotType}\n` +
+    `👤 *Customer Name:* ${customerName}\n` +
+    `📱 *Mobile Number:* +91 ${phone}\n` +
+    `🛠 *Service:* ${service}\n` +
+    `📍 *Site Location:* ${savedBooking.location}\n` +
+    `📅 *Survey Date:* ${workDate}\n` +
+    `⏰ *Time Window:* ${preferredTime}\n` +
+    (message ? `💬 *Site Requirements:* ${message}\n` : '') +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `✅ *Status:* Booking Received & Stored\n` +
+    `📞 *Direct Helpline:* +91 9949293872\n` +
+    `📧 *Email:* tarsolutions55@gmail.com\n` +
+    `🕒 *Timestamp:* ${timeInKolkata}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `_Our team will contact you for site inspection._`;
+
+  const customerWhatsAppUrl = `https://api.whatsapp.com/send?phone=91${phone}&text=${encodeURIComponent(receiptText)}`;
   const adminWhatsAppUrl = `https://api.whatsapp.com/send?phone=919949293872&text=${encodeURIComponent(receiptText)}`;
-  const customerSmsUrl = `sms:+91${cleanPhone}?body=${encodeURIComponent(receiptText)}`;
+  const customerSmsUrl = `sms:+91${phone}?body=${encodeURIComponent(receiptText)}`;
 
-  // Automation Gateway Check
+  // Fast2SMS Gateway Dispatch
   let gatewayDispatched = false;
-  let gatewayProvider = 'Direct Client & Terminal Webhook';
+  let gatewayProvider = 'Direct Client & Terminal';
   let gatewayDetails = '';
 
-  // 1. Fast2SMS Integration (if FAST2SMS_API_KEY is configured in .env)
-  if (process.env.FAST2SMS_API_KEY && cleanPhone.length === 10) {
+  if (process.env.FAST2SMS_API_KEY && phone.length === 10) {
     try {
-      const smsMessage = `TAR Civil & Waterproofing: Dear ${newBooking.customerName}, your survey request for ${newBooking.service} at ${newBooking.location} is received (Ref: ${newBooking.bookingCode}). Our team will contact you. Helpline: 9949293872`;
-      const fast2smsRes = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+      const smsMessage = `TAR Civil & Waterproofing: Dear ${customerName}, your request for ${service} at ${savedBooking.location} is received. Ref: ${bookingCode}. Helpline: 9949293872`;
+      const fast2smsResponse = await fetch('https://www.fast2sms.com/dev/bulkV2', {
         method: 'POST',
         headers: {
           authorization: process.env.FAST2SMS_API_KEY,
@@ -324,81 +567,61 @@ _Our chief engineer will visit your site for physical inspection and moisture an
           message: smsMessage,
           language: 'english',
           flash: 0,
-          numbers: cleanPhone
+          numbers: phone
         })
       });
-      const fast2smsData = await fast2smsRes.json();
-      if (fast2smsData.return) {
+
+      const fast2smsData = await fast2smsResponse.json();
+      if (fast2smsResponse.ok && fast2smsData?.return) {
         gatewayDispatched = true;
-        gatewayProvider = 'Fast2SMS Indian Gateway';
-        gatewayDetails = `SMS transmitted to +91 ${cleanPhone}`;
+        gatewayProvider = 'Fast2SMS';
+        gatewayDetails = `SMS sent to +91 ${phone}`;
       }
-    } catch (e: any) {
-      console.error('[FAST2SMS ERROR]', e?.message || e);
+    } catch (error: any) {
+      console.error('[FAST2SMS ERROR]', error?.message || error);
     }
   }
 
-  // 2. Custom Webhook Dispatch (if NOTIFICATION_WEBHOOK_URL is configured)
+  // Webhook Dispatch
   if (process.env.NOTIFICATION_WEBHOOK_URL) {
     try {
-      await fetch(process.env.NOTIFICATION_WEBHOOK_URL, {
+      const webhookResponse = await fetch(process.env.NOTIFICATION_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event: 'BOOKING_RECEIVED',
-          booking: newBooking,
+          booking: savedBooking,
           receiptText,
           time: timeInKolkata
         })
       });
-      gatewayDispatched = true;
-      gatewayProvider = gatewayProvider === 'Fast2SMS Indian Gateway' ? 'Fast2SMS + Webhook' : 'Notification Webhook';
-    } catch (e: any) {
-      console.error('[WEBHOOK ERROR]', e?.message || e);
+      if (webhookResponse.ok) {
+        gatewayDispatched = true;
+        gatewayProvider = gatewayProvider === 'Fast2SMS' ? 'Fast2SMS + Webhook' : 'Notification Webhook';
+      }
+    } catch (error: any) {
+      console.error('[WEBHOOK ERROR]', error?.message || error);
     }
   }
 
-  // 3. Supabase Backend Database Persistence
-  let supabaseResult: any = { success: false };
-  try {
-    supabaseResult = await saveBookingToSupabase(newBooking);
-    if (supabaseResult.success) {
-      newBooking.supabaseSynced = true;
-      newBooking.supabaseTable = supabaseResult.table;
-    } else {
-      newBooking.supabaseSynced = false;
-      newBooking.supabaseError = supabaseResult.error;
-    }
-  } catch (err: any) {
-    supabaseResult = { success: false, error: err?.message || 'Supabase exception' };
-    newBooking.supabaseSynced = false;
-    newBooking.supabaseError = supabaseResult.error;
-  }
-
-  // Update DB cache with Supabase sync status
-  db.bookings = [newBooking, ...(db.bookings || [])];
-  saveDb(db);
-
-  // Comprehensive Terminal Logging (Visible in Cloud Run logs & Terminal)
   console.log('╔══════════════════════════════════════════════════════════════════════╗');
-  console.log('║ 🏢 TAR AUTOMATED BOOKING DISPATCH SYSTEM (HYDERABAD & TELANGANA)    ║');
+  console.log('║ TAR SOLUTIONS - BOOKING RECEIVED & STORED                            ║');
   console.log('╠══════════════════════════════════════════════════════════════════════╣');
-  console.log(`║ 📋 Booking Code:     ${newBooking.bookingCode}`);
-  console.log(`║ 👤 Customer Name:    ${newBooking.customerName}`);
-  console.log(`║ 📱 Mobile Number:    +91 ${cleanPhone}`);
-  console.log(`║ 🛠  Service:          ${newBooking.service}`);
-  console.log(`║ 📍 Location:         ${newBooking.location}`);
-  console.log(`║ 📅 Survey Date:      ${newBooking.workDate} (${newBooking.preferredTime})`);
-  console.log(`║ 📧 Admin Notification: tarsolutions55@gmail.com | +91 9949293872`);
-  console.log(`║ ⚡ Supabase Backend:  ${supabaseResult.success ? `SAVED TO TABLE [${supabaseResult.table}]` : `PENDING (${supabaseResult.error?.slice(0, 36) || 'Check table'})`}`);
-  console.log(`║ 🚀 Gateway Status:   ${gatewayDispatched ? `LIVE DISPATCH VIA [${gatewayProvider}]` : 'CLIENT DIRECT DISPATCH READY'}`);
-  console.log(`║ 📲 Customer WhatsApp URL: ${customerWhatsAppUrl}`);
+  console.log(`║ Booking Code: ${bookingCode}`);
+  console.log(`║ Customer:     ${customerName}`);
+  console.log(`║ Phone:        +91 ${phone}`);
+  console.log(`║ Service:      ${service}`);
+  console.log(`║ Location:     ${savedBooking.location}`);
+  console.log(`║ Date:         ${workDate}`);
+  console.log(`║ Time:         ${preferredTime}`);
+  console.log(`║ Storage:      Stored (7-Day Retention)`);
   console.log('╚══════════════════════════════════════════════════════════════════════╝');
 
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
-    booking: newBooking,
-    bookingCode: newBooking.bookingCode,
+    booking: savedBooking,
+    bookingCode: bookingCode,
+    customerId: actualCustomerId,
     receiptText,
     customerWhatsAppUrl,
     adminWhatsAppUrl,
@@ -406,345 +629,690 @@ _Our chief engineer will visit your site for physical inspection and moisture an
     gatewayDispatched,
     gatewayProvider,
     gatewayDetails,
-    supabase: {
-      synced: !!supabaseResult.success,
-      table: supabaseResult.table || null,
-      error: supabaseResult.error || null,
-      code: supabaseResult.code || null,
-      hint: supabaseResult.hint || null
-    },
-    message: 'Booking registered successfully. Automated customer receipt prepared.'
+    message: 'Booking confirmed successfully.'
   });
 });
 
-// ---------------- SUPABASE INTEGRATION ENDPOINTS ----------------
+/**
+ * ============================================================
+ * CUSTOMER AUTH (REGISTRATION & LOGIN)
+ * ============================================================
+ */
 
-// Get live Supabase connection & schema status
-app.get('/api/supabase/status', async (req, res) => {
+app.post('/api/auth/customer/register', async (req, res) => {
+  const { name, mobile, email, password, confirmPassword, address } = req.body || {};
+
+  const cleanName = String(name || '').trim();
+  const cleanPhone = cleanIndianMobile(mobile);
+
+  if (!cleanName) {
+    return res.status(400).json({
+      success: false,
+      error: 'Customer full name is required.'
+    });
+  }
+
+  if (!cleanPhone || cleanPhone.length !== 10) {
+    return res.status(400).json({
+      success: false,
+      error: 'A valid 10-digit Indian mobile number is required.'
+    });
+  }
+
+  if (!password || String(password).length < 6) {
+    return res.status(400).json({
+      success: false,
+      error: 'Password must be at least 6 characters.'
+    });
+  }
+
+  if (confirmPassword !== undefined && password !== confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      error: 'Passwords do not match.'
+    });
+  }
+
   try {
-    const status = await checkSupabaseStatus();
-    res.json(status);
-  } catch (e: any) {
-    res.status(500).json({
-      connected: false,
-      status: 'CONNECTION_ERROR',
-      message: e?.message || 'Error checking Supabase status'
+    const customer = await saveCustomer({
+      name: cleanName,
+      mobile: cleanPhone,
+      phone: cleanPhone,
+      email: email ? String(email).trim().toLowerCase() : null,
+      password: String(password),
+      address: address ? String(address).trim() : 'Hyderabad, Telangana',
+      status: 'Active'
+    });
+
+    res.status(201).json({
+      success: true,
+      customer,
+      message: 'Customer registered successfully.'
+    });
+  } catch (error: any) {
+    console.error('[CUSTOMER REGISTER ERROR]', error);
+    res.status(400).json({
+      success: false,
+      error: error?.message || 'Customer registration failed.'
     });
   }
 });
 
-// Get recommended PostgreSQL SQL schema for Supabase SQL Editor
-app.get('/api/supabase/sql', (req, res) => {
-  res.json({
-    projectId: SUPABASE_CONFIG.projectId,
-    projectUrl: SUPABASE_CONFIG.projectUrl,
-    tableName: SUPABASE_CONFIG.tableName,
-    sql: getRecommendedSupabaseSQL()
-  });
-});
+app.post('/api/auth/customer/login', async (req, res) => {
+  const { identifier, mobile, phone, email, password } = req.body || {};
+  const loginId = identifier || mobile || phone || email;
 
-// Sync all existing local bookings to Supabase
-app.post('/api/supabase/sync-all', async (req, res) => {
+  if (!loginId || !password) {
+    return res.status(400).json({
+      success: false,
+      error: 'Mobile number/email and password are required.'
+    });
+  }
+
   try {
-    const db = loadDb();
-    const allBookings = db.bookings || [];
-    
-    if (allBookings.length === 0) {
-      return res.json({
-        success: true,
-        message: 'No bookings to sync.',
-        total: 0,
-        synced: 0,
-        failed: 0
+    const authResult = await authenticateCustomer(String(loginId).trim(), String(password));
+
+    if (!authResult.success || !authResult.customer) {
+      return res.status(401).json({
+        success: false,
+        error: authResult.error || 'Invalid mobile/email or password.'
       });
     }
 
-    const report = await syncAllBookingsToSupabase(allBookings);
+    if (authResult.customer.status === 'Inactive') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deactivated. Please contact TAR Solutions support at +91 9949293872.'
+      });
+    }
 
-    // Update local database flags for successful syncs
-    const successCodes = new Set(
-      report.results.filter((r) => r.success).map((r) => r.bookingCode)
-    );
-
-    db.bookings = allBookings.map((b: any) => {
-      if (successCodes.has(b.bookingCode)) {
-        return { ...b, supabaseSynced: true, supabaseError: undefined };
-      }
-      return b;
-    });
-    saveDb(db);
-
-    res.json({
-      success: true,
-      report,
-      message: `Batch sync complete: ${report.synced} synced, ${report.failed} pending.`
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || 'Sync failed' });
-  }
-});
-
-// Fetch live bookings from Supabase
-app.get('/api/supabase/bookings', async (req, res) => {
-  try {
-    const result = await fetchBookingsFromSupabase(100);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message });
-  }
-});
-
-// Admin login verification
-app.post('/api/auth/admin/login', (req, res) => {
-  const { username, password } = req.body;
-  const db = loadDb();
-  const currentCreds = db.adminCreds || { username: 'Tarsolutions', passwordHash: 'Tarsolutions@24' };
-
-  if (
-    (username === currentCreds.username && password === currentCreds.passwordHash) ||
-    (username === 'Tarsolutions' && password === 'Tarsolutions@24')
-  ) {
     return res.json({
       success: true,
-      token: 'tar_admin_bearer_token_' + Date.now(),
-      admin: { username: currentCreds.username, role: 'admin' }
+      customer: authResult.customer,
+      message: 'Login successful.'
+    });
+  } catch (error: any) {
+    console.error('[CUSTOMER LOGIN ERROR]', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Authentication service temporarily unavailable. Please try again.'
     });
   }
-  return res.status(401).json({ success: false, error: 'Invalid admin username or password' });
 });
 
-// Admin change password / update credentials
-app.post('/api/auth/admin/change-password', (req, res) => {
-  const { currentPassword, newPassword, newUsername } = req.body;
-  const db = loadDb();
-  const currentCreds = db.adminCreds || { username: 'Tarsolutions', passwordHash: 'Tarsolutions@24' };
+/**
+ * ============================================================
+ * ADMIN AUTH & OTP
+ * ============================================================
+ */
 
-  // If currentPassword is provided and wrong
-  if (currentPassword && currentPassword !== currentCreds.passwordHash) {
-    return res.status(400).json({ success: false, error: 'Current password is incorrect' });
+function getAdminCredentials() {
+  const dbCreds = loadDb().adminCreds;
+  return {
+    username: process.env.ADMIN_USERNAME || dbCreds?.username || 'Tarsolutions',
+    password: process.env.ADMIN_PASSWORD || dbCreds?.passwordHash || 'Tarsolutions@24'
+  };
+}
+
+app.post('/api/auth/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  const credentials = getAdminCredentials();
+
+  if (username === credentials.username && password === credentials.password) {
+    return res.json({
+      success: true,
+      token: `tar_admin_${Date.now()}_${randomUUID()}`,
+      admin: {
+        username: credentials.username,
+        role: 'admin'
+      }
+    });
   }
 
-  const updatedUsername = (newUsername && newUsername.trim()) ? newUsername.trim() : currentCreds.username;
-  const updatedPassword = (newPassword && newPassword.trim()) ? newPassword.trim() : currentCreds.passwordHash;
-
-  db.adminCreds = {
-    username: updatedUsername,
-    passwordHash: updatedPassword
-  };
-  saveDb(db);
-  console.log(`[ADMIN CREDS UPDATED] Username: ${updatedUsername} | Password changed`);
-  res.json({
-    success: true,
-    message: 'Admin credentials updated successfully',
-    creds: { username: updatedUsername, passwordHash: updatedPassword }
+  return res.status(401).json({
+    success: false,
+    error: 'Invalid admin username or password.'
   });
 });
 
-// In-memory OTP storage for admin password reset (expires in 10 minutes)
-let adminOtpStore: { otp: string; phone: string; email: string; expiresAt: number } | null = null;
+app.post('/api/auth/admin/change-password', (req, res) => {
+  const { currentPassword, newPassword, newUsername } = req.body;
+  const current = getAdminCredentials();
 
-// Admin Request OTP for Password Reset - Dispatches to both Registered Admin Owner Mobile & Email
-app.post('/api/auth/admin/request-otp', (req, res) => {
-  const { phone, email, channel } = req.body;
+  if (currentPassword && currentPassword !== current.password) {
+    return res.status(400).json({
+      success: false,
+      error: 'Current password is incorrect.'
+    });
+  }
+
+  if (!newPassword && !newUsername) {
+    return res.status(400).json({
+      success: false,
+      error: 'Provide a new username or password.'
+    });
+  }
+
   const db = loadDb();
-  // Fixed registered admin owner mobile number and email
-  const adminOwnerPhone = (phone || db.content?.business?.phone || '9949293872').replace(/\D/g, '');
-  const adminOwnerEmail = (email && email.trim()) ? email.trim() : (db.content?.business?.email || 'shivaji09704@gmail.com');
+  db.adminCreds = {
+    username: newUsername ? String(newUsername).trim() : current.username,
+    passwordHash: newPassword ? String(newPassword).trim() : current.password
+  };
+  saveDb(db);
 
-  // Generate real 6-digit secure numeric OTP
-  const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 mins validity
+  return res.json({
+    success: true,
+    message: 'Admin credentials updated successfully.',
+    admin: {
+      username: db.adminCreds.username,
+      role: 'admin'
+    }
+  });
+});
+
+let adminOtpStore: {
+  otp: string;
+  phone: string;
+  email: string;
+  expiresAt: number;
+} | null = null;
+
+app.post('/api/auth/admin/request-otp', (req, res) => {
+  const { phone, email } = req.body;
+
+  const adminPhone = String(
+    phone || process.env.ADMIN_OWNER_PHONE || '9949293872'
+  ).replace(/\D/g, '');
+
+  const adminEmail = String(
+    email || process.env.ADMIN_OWNER_EMAIL || 'tarsolutions55@gmail.com'
+  ).trim();
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 10 * 60 * 1000;
 
   adminOtpStore = {
-    otp: generatedOtp,
-    phone: adminOwnerPhone,
-    email: adminOwnerEmail,
+    otp,
+    phone: adminPhone,
+    email: adminEmail,
     expiresAt
   };
 
-  console.log('================================================================');
-  console.log(`[TAR ADMIN OTP DISPATCH TO OWNER]`);
-  console.log(`Target Email: ${adminOwnerEmail}`);
-  console.log(`Target Mobile: +91 ${adminOwnerPhone}`);
-  console.log(`OTP Code: ${generatedOtp}`);
-  console.log(`Requested Channel: ${channel || 'both'}`);
-  console.log(`Expires in: 10 minutes (valid until ${new Date(expiresAt).toLocaleTimeString()})`);
-  console.log('================================================================');
-
-  const maskedPhone = `+91 ${adminOwnerPhone.slice(0, 2)}*****${adminOwnerPhone.slice(-2)}`;
-  const [emailUser, emailDomain] = adminOwnerEmail.split('@');
-  const maskedEmail = emailUser.length > 3 
-    ? `${emailUser.slice(0, 3)}***@${emailDomain}` 
-    : `${emailUser.slice(0, 1)}*@${emailDomain}`;
+  console.log('[TAR ADMIN OTP GENERATED]');
+  console.log(`Target Mobile: +91 ${adminPhone}`);
+  console.log(`Target Email: ${adminEmail}`);
 
   res.json({
     success: true,
-    message: `Secure 6-digit OTP code dispatched successfully to Email (${adminOwnerEmail}) and Mobile (${maskedPhone}).`,
-    phoneMasked: maskedPhone,
-    emailMasked: maskedEmail,
-    fullEmail: adminOwnerEmail,
-    fullPhone: adminOwnerPhone,
-    otpPreview: generatedOtp // Provided for direct verification in browser preview
+    message: 'OTP generated. Check the configured admin notification channel.',
+    phoneMasked: `+91 ${adminPhone.slice(0, 2)}*****${adminPhone.slice(-2)}`,
+    emailMasked: adminEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2')
   });
 });
 
-// Admin Verify OTP and Reset Password / Direct Login
 app.post('/api/auth/admin/verify-otp-reset', (req, res) => {
-  const { otp, newPassword, newUsername } = req.body;
-  const db = loadDb();
-  const currentCreds = db.adminCreds || { username: 'admin', passwordHash: 'admin123' };
+  const { otp } = req.body;
 
-  if (!adminOtpStore || Date.now() > adminOtpStore.expiresAt) {
-    return res.status(400).json({ success: false, error: 'OTP has expired or was not requested. Please request a new OTP.' });
+  if (!adminOtpStore) {
+    return res.status(400).json({
+      success: false,
+      error: 'OTP was not requested.'
+    });
   }
 
-  if (otp.trim() !== adminOtpStore.otp) {
-    return res.status(400).json({ success: false, error: 'Invalid verification OTP. Please check the SMS on your admin mobile and try again.' });
+  if (Date.now() > adminOtpStore.expiresAt) {
+    adminOtpStore = null;
+    return res.status(400).json({
+      success: false,
+      error: 'OTP has expired.'
+    });
   }
 
-  // Valid OTP! If new credentials provided, update them.
-  let finalUsername = currentCreds.username;
-  let finalPassword = currentCreds.passwordHash;
-
-  if (newPassword && newPassword.trim().length >= 6) {
-    finalPassword = newPassword.trim();
-  }
-  if (newUsername && newUsername.trim()) {
-    finalUsername = newUsername.trim();
+  if (String(otp || '').trim() !== adminOtpStore.otp) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid OTP.'
+    });
   }
 
-  db.adminCreds = {
-    username: finalUsername,
-    passwordHash: finalPassword
-  };
-  saveDb(db);
-
-  // Clear used OTP
   adminOtpStore = null;
+  const credentials = getAdminCredentials();
 
-  console.log(`[ADMIN OTP LOGIN SUCCESS] Verified via Admin Mobile SMS. Logged in as: ${finalUsername}`);
-
-  res.json({
+  return res.json({
     success: true,
-    message: 'OTP verified successfully! Admin credentials updated and authenticated.',
-    token: 'tar_admin_bearer_token_' + Date.now(),
-    admin: { username: finalUsername, role: 'admin' },
-    creds: { username: finalUsername, passwordHash: finalPassword }
+    message: 'OTP verified successfully.',
+    token: `tar_admin_${Date.now()}_${randomUUID()}`,
+    admin: {
+      username: credentials.username,
+      role: 'admin'
+    }
   });
 });
 
-// Daily 10:00 PM Asia/Kolkata Report Cron Simulator
+/**
+ * ============================================================
+ * DAILY REPORT
+ * ============================================================
+ */
+
 function runDailyReportJob() {
   const now = new Date();
-  const timeInKolkata = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
-  const dateInKolkata = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-
-  console.log(`[SCHEDULED JOB CHECK] Current Hyderabad Time: ${timeInKolkata} | Date: ${dateInKolkata}`);
+  const timeInKolkata = now.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour12: false
+  });
+  const dateInKolkata = now.toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Kolkata'
+  });
 
   const db = loadDb();
-  const todayBookings = (db.bookings || []).filter((b: any) => b.bookingDate === dateInKolkata);
 
-  const reportLogEntry = {
+  const todayBookings = (db.bookings || []).filter((booking: any) => {
+    const bookingDate = booking.bookingDate || booking.booking_date || booking.workDate;
+    const createdAt = String(booking.createdAt || booking.created_at || '');
+    return bookingDate === dateInKolkata || createdAt.startsWith(dateInKolkata);
+  });
+
+  const report = {
     id: `rep-${Date.now()}`,
     timestamp: now.toISOString(),
     reportDate: dateInKolkata,
     totalBookings: todayBookings.length,
-    sentTo: 'tarsolutions55@gmail.com',
+    sentTo: process.env.REPORT_EMAIL || 'tarsolutions55@gmail.com',
     status: 'GENERATED_AND_LOGGED'
   };
 
-  db.dailyReportLog = [reportLogEntry, ...(db.dailyReportLog || []).slice(0, 30)];
+  db.dailyReportLog = [report, ...(db.dailyReportLog || [])].slice(0, 30);
   saveDb(db);
 
   console.log('----------------------------------------------------');
-  console.log(`[DAILY 10:00 PM REPORT GENERATED for ${dateInKolkata}]`);
+  console.log(`[DAILY REPORT] ${dateInKolkata}`);
+  console.log(`Current Hyderabad Time: ${timeInKolkata}`);
   console.log(`Total Bookings Today: ${todayBookings.length}`);
-  console.log(`Email dispatched to: tarsolutions55@gmail.com`);
   console.log('----------------------------------------------------');
 }
 
-// Run check periodically
+let lastDailyReportDate = '';
+
 setInterval(() => {
   const now = new Date();
-  const parts = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }).split(':');
-  // Check if exactly 22:00 (10:00 PM)
-  if (parts[0] === '22' && parts[1] === '00') {
+  const parts = now.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour12: false
+  }).split(':');
+
+  const date = now.toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Kolkata'
+  });
+
+  if (parts[0] === '22' && parts[1] === '00' && lastDailyReportDate !== date) {
+    lastDailyReportDate = date;
     runDailyReportJob();
   }
-}, 60000);
+}, 60 * 1000);
 
-// On-demand daily report trigger for testing
-app.post('/api/reports/trigger-daily', (req, res) => {
+app.post('/api/reports/trigger-daily', (_req, res) => {
   runDailyReportJob();
   res.json({
     success: true,
-    message: '10:00 PM Asia/Kolkata Daily PDF Report generated and dispatched to tarsolutions55@gmail.com'
+    message: 'Daily report generated.'
   });
 });
 
-// Entire Day Report Data API - Comprehensive report breakdown of any day
 app.get('/api/reports/entire-day', (req, res) => {
-  const targetDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
+  const targetDate = String(
+    req.query.date || new Date().toISOString().slice(0, 10)
+  );
+
   const db = loadDb();
-  const allBookings = db.bookings || [];
-  const dayBookings = allBookings.filter(
-    (b: any) => b.bookingDate === targetDate || b.workDate === targetDate || (b.createdAt && b.createdAt.startsWith(targetDate))
-  );
+  const bookings = db.bookings || [];
 
-  const slot1Count = dayBookings.filter((b: any) => (b.slotType || '').includes('Free Survey')).length;
-  const slot2Count = dayBookings.filter((b: any) => (b.slotType || '').includes('INSPECTION') || !(b.slotType || '').includes('Enquiry') && !(b.slotType || '').includes('Survey')).length;
-  const slot3Count = dayBookings.filter((b: any) => (b.slotType || '').includes('Enquiry')).length;
+  const dayBookings = bookings.filter((booking: any) => {
+    const created = booking.created_at || booking.createdAt || '';
+    return (
+      booking.bookingDate === targetDate ||
+      booking.booking_date === targetDate ||
+      booking.workDate === targetDate ||
+      booking.work_date === targetDate ||
+      String(created).startsWith(targetDate)
+    );
+  });
 
-  const newCount = dayBookings.filter((b: any) => b.status === 'New').length;
-  const contactedCount = dayBookings.filter((b: any) => b.status === 'Contacted').length;
-  const confirmedCount = dayBookings.filter((b: any) => b.status === 'Confirmed').length;
-  const completedCount = dayBookings.filter((b: any) => b.status === 'Completed').length;
+  const slot1 = dayBookings.filter((booking: any) =>
+    String(booking.slotType || booking.source_channel || '').toLowerCase().includes('free survey')
+  ).length;
 
-  // Registered customers matching this date
-  const dayCustomers = (db.customers || []).filter(
-    (c: any) => (c.createdAt && c.createdAt.startsWith(targetDate)) || (c.registeredAt && c.registeredAt.startsWith(targetDate))
-  );
+  const slot2 = dayBookings.filter((booking: any) => {
+    const source = String(booking.slotType || booking.source_channel || '').toLowerCase();
+    return source.includes('inspection') || (!source.includes('enquiry') && !source.includes('survey'));
+  }).length;
+
+  const slot3 = dayBookings.filter((booking: any) =>
+    String(booking.slotType || booking.source_channel || '').toLowerCase().includes('enquiry')
+  ).length;
+
+  const statusCount = (wantedStatus: string) =>
+    dayBookings.filter(
+      (booking: any) => String(booking.status || booking.bookingStatus || '').toLowerCase() === wantedStatus
+    ).length;
 
   res.json({
     success: true,
     targetDate,
     totalBookings: dayBookings.length,
-    totalRegisteredCustomers: dayCustomers.length,
+    totalRegisteredCustomers: (db.customers || []).filter((customer: any) => {
+      const created = customer.createdAt || customer.created_at || customer.registeredAt || '';
+      return String(created).startsWith(targetDate);
+    }).length,
     slotsBreakdown: {
-      bookFreeSurvey: slot1Count,
-      siteInspectionAssessment: slot2Count,
-      customerEnquiry: slot3Count
+      bookFreeSurvey: slot1,
+      siteInspectionAssessment: slot2,
+      customerEnquiry: slot3
     },
     statusBreakdown: {
-      new: newCount,
-      contacted: contactedCount,
-      confirmed: confirmedCount,
-      completed: completedCount
+      new: statusCount('new'),
+      contacted: statusCount('contacted'),
+      confirmed: statusCount('confirmed'),
+      completed: statusCount('completed')
     },
     bookings: dayBookings,
-    customers: dayCustomers,
     generatedAt: new Date().toISOString()
   });
 });
 
-// ---------------- VITE MIDDLEWARE / STATIC ASSETS ----------------
+/**
+ * ============================================================
+ * VERCEL BLOB STORAGE & 7-DAY RETENTION CLEANUP ENDPOINTS
+ * ============================================================
+ */
+
+// Storage status & verification endpoint
+app.get('/api/storage/status', async (_req, res) => {
+  try {
+    const status = await getStorageStatus();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({
+      connected: false,
+      error: error?.message || 'Failed to check storage status'
+    });
+  }
+});
+
+// 7-day retention cleanup endpoint (manual or triggered via Vercel cron)
+app.all(['/api/storage/cleanup', '/api/cron/cleanup'], async (_req, res) => {
+  try {
+    const result = await cleanupExpiredRecords(RETENTION_DAYS);
+    res.json({
+      success: true,
+      result,
+      retentionDays: RETENTION_DAYS,
+      message: '7-day rolling retention cleanup executed successfully.'
+    });
+  } catch (error: any) {
+    console.error('[CLEANUP API ERROR]', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Cleanup operation failed.'
+    });
+  }
+});
+
+// Customer service requests & enquiries
+app.get(['/api/requests', '/api/customer-requests'], async (_req, res) => {
+  try {
+    const requests = await getCustomerRequests();
+    res.json({
+      success: true,
+      requests,
+      count: requests.length
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to retrieve enquiries'
+    });
+  }
+});
+
+app.post(['/api/requests', '/api/customer-requests'], async (req, res) => {
+  try {
+    const requestEntry = await saveCustomerRequest(req.body);
+    res.status(201).json({
+      success: true,
+      request: requestEntry,
+      message: 'Enquiry received and securely stored.'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to save enquiry'
+    });
+  }
+});
+
+// Update enquiry status or notes
+app.patch(['/api/requests/:id', '/api/customer-requests/:id'], async (req, res) => {
+  try {
+    const updated = await updateCustomerRequest(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Enquiry not found' });
+    }
+    res.json({ success: true, request: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to update enquiry' });
+  }
+});
+
+// Delete enquiry
+app.delete(['/api/requests/:id', '/api/customer-requests/:id'], async (req, res) => {
+  try {
+    const deleted = await deleteCustomerRequest(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Enquiry not found' });
+    }
+    res.json({ success: true, message: 'Enquiry deleted successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to delete enquiry' });
+  }
+});
+
+// Single booking lookup
+app.get('/api/bookings/:id', async (req, res) => {
+  try {
+    const booking = await getBookingById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+    res.json({ success: true, booking });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to get booking' });
+  }
+});
+
+// Single booking deletion
+app.delete('/api/bookings/:id', async (req, res) => {
+  try {
+    const success = await deleteBooking(req.params.id);
+    if (!success) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+    res.json({ success: true, message: 'Booking deleted successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to delete booking' });
+  }
+});
+
+// Single customer lookup & update & delete
+app.get('/api/customers/:id', async (req, res) => {
+  try {
+    const customer = await getCustomerById(req.params.id);
+    if (!customer) {
+      return res.status(404).json({ success: false, error: 'Customer not found' });
+    }
+    res.json({ success: true, customer });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to get customer' });
+  }
+});
+
+app.patch('/api/customers/:id', async (req, res) => {
+  try {
+    const updated = await updateCustomer(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Customer not found' });
+    }
+    res.json({ success: true, customer: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to update customer' });
+  }
+});
+
+app.delete('/api/customers/:id', async (req, res) => {
+  try {
+    const success = await deleteCustomer(req.params.id);
+    if (!success) {
+      return res.status(404).json({ success: false, error: 'Customer not found' });
+    }
+    res.json({ success: true, message: 'Customer account deleted successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to delete customer' });
+  }
+});
+
+// Weekly Business & Data Report
+app.get('/api/reports/weekly', async (req, res) => {
+  try {
+    const targetDateStr = (req.query.date as string) || new Date().toISOString().split('T')[0];
+    const targetDate = new Date(targetDateStr);
+
+    const day = targetDate.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(targetDate);
+    monday.setDate(targetDate.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    const weekStartStr = monday.toISOString().split('T')[0];
+    const weekEndStr = sunday.toISOString().split('T')[0];
+
+    const allBookings = await getBookings();
+    const allCustomers = await getCustomers();
+
+    const weekBookings = allBookings.filter((b) => {
+      const bDate = (b.workDate || b.bookingDate || (b.createdAt ? b.createdAt.substring(0, 10) : '')).trim();
+      return bDate >= weekStartStr && bDate <= weekEndStr;
+    });
+
+    const statusCounts = {
+      total: weekBookings.length,
+      completed: weekBookings.filter((b) => String(b.status).toLowerCase() === 'completed').length,
+      confirmed: weekBookings.filter((b) => String(b.status).toLowerCase() === 'confirmed').length,
+      new: weekBookings.filter((b) => String(b.status).toLowerCase() === 'new').length,
+      contacted: weekBookings.filter((b) => String(b.status).toLowerCase() === 'contacted').length,
+      cancelled: weekBookings.filter((b) => String(b.status).toLowerCase() === 'cancelled').length,
+      pending: weekBookings.filter((b) => ['new', 'contacted', 'pending'].includes(String(b.status).toLowerCase())).length
+    };
+
+    const newCustomersThisWeek = allCustomers.filter((c) => {
+      const cDate = (c.registeredAt || c.createdAt || '').substring(0, 10);
+      return cDate >= weekStartStr && cDate <= weekEndStr;
+    }).length;
+
+    const serviceCounts: Record<string, number> = {};
+    for (const b of weekBookings) {
+      const sName = b.service || 'General Waterproofing';
+      serviceCounts[sName] = (serviceCounts[sName] || 0) + 1;
+    }
+    const topServices = Object.entries(serviceCounts)
+      .map(([serviceName, count]) => ({
+        serviceName,
+        count,
+        percentage: weekBookings.length ? Math.round((count / weekBookings.length) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const dailyBreakdown = [];
+    for (let i = 0; i < 7; i++) {
+      const cur = new Date(monday);
+      cur.setDate(monday.getDate() + i);
+      const curStr = cur.toISOString().split('T')[0];
+      const dayBookings = weekBookings.filter((b) => {
+        const bDate = (b.workDate || b.bookingDate || (b.createdAt ? b.createdAt.substring(0, 10) : '')).trim();
+        return bDate === curStr;
+      });
+      dailyBreakdown.push({
+        dayIndex: i,
+        dayName: dayNames[i],
+        date: curStr,
+        count: dayBookings.length,
+        completed: dayBookings.filter((b) => String(b.status).toLowerCase() === 'completed').length,
+        confirmed: dayBookings.filter((b) => String(b.status).toLowerCase() === 'confirmed').length,
+        pending: dayBookings.filter((b) => ['new', 'contacted', 'pending'].includes(String(b.status).toLowerCase())).length
+      });
+    }
+
+    res.json({
+      success: true,
+      weekStart: weekStartStr,
+      weekEnd: weekEndStr,
+      targetDate: targetDateStr,
+      totalBookings: weekBookings.length,
+      metrics: statusCounts,
+      totalCustomers: allCustomers.length,
+      newCustomersThisWeek,
+      topServices,
+      dailyBreakdown,
+      bookings: weekBookings
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to compile weekly report'
+    });
+  }
+});
+
+// Catch-all 404 handler for any unhandled /api/* routes so they return JSON, NOT HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `API route not found: ${req.method} ${req.path}`
+  });
+});
+
+/**
+ * ============================================================
+ * VITE SPA MIDDLEWARE / PRODUCTION
+ * ============================================================
+ */
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true
+      },
       appType: 'spa'
     });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+
+    app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`TAR Civil & Waterproofing server active on http://0.0.0.0:${PORT}`);
+    console.log(`[STORAGE ENGINE] Local JSON Storage (${RETENTION_DAYS}-Day Retention Active)`);
   });
 }
 
